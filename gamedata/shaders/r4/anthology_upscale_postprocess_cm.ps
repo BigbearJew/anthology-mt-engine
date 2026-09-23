@@ -1,0 +1,50 @@
+#include "common.h"
+#include "hdr10.h"
+
+Texture2D s_base0;
+Texture2D s_base1;
+Texture2D s_noise;
+Texture2D s_grad0;
+Texture2D s_grad1;
+
+uniform float4 c_brightness;
+uniform float4 c_colormap;
+uniform float4 anthology_upscaler_params; // x: DLSS-only display sharpen
+
+float3 sample_present(Texture2D source, float2 tc)
+{
+	float3 center = source.SampleLevel(smp_rtlinear, tc, 0.0f).rgb;
+	float strength = saturate(anthology_upscaler_params.x);
+	float3 result = center;
+	[branch]
+	if (strength > 0.0001f)
+	{
+		float3 north = source.SampleLevel(smp_rtlinear, tc, 0.0f, int2(0, -1)).rgb;
+		float3 south = source.SampleLevel(smp_rtlinear, tc, 0.0f, int2(0, 1)).rgb;
+		float3 west = source.SampleLevel(smp_rtlinear, tc, 0.0f, int2(-1, 0)).rgb;
+		float3 east = source.SampleLevel(smp_rtlinear, tc, 0.0f, int2(1, 0)).rgb;
+		float3 detail = center - 0.25f * (north + south + west + east);
+		result = max(center + detail * (0.45f * strength), 0.0f);
+	}
+	return result;
+}
+
+float4 main(p_postpr I) : SV_Target
+{
+	float3 image_o = sample_present(s_base0, I.Tex0);
+	[branch]
+	if (any(abs(I.Tex0 - I.Tex1) >= 0.000001f))
+		image_o = 0.5f * (image_o + sample_present(s_base1, I.Tex1));
+
+	float grad_i = dot(image_o, (0.3333f).xxx);
+	float3 image0 = s_grad0.Sample(smp_rtlinear, float2(grad_i, 0.5f)).rgb;
+	float3 image1 = s_grad1.Sample(smp_rtlinear, float2(grad_i, 0.5f)).rgb;
+	float3 image = lerp(image_o, lerp(image0, image1, c_colormap.y), c_colormap.x);
+
+	float gray = dot(image, I.Gray);
+	image = lerp(gray, image, I.Gray.w);
+	float3 noised = image * s_noise.Sample(smp_linear, I.Tex2).rgb * 2.0f;
+	image = lerp(noised, image, I.Color.w);
+	image = (image * I.Color + c_brightness) * 2.0f;
+	return float4(HDR10_ToDisplay_World(image), 1.0f);
+}

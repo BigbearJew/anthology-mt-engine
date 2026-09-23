@@ -177,7 +177,9 @@ void dxRainRender::Render(CEffect_Rain& owner)
 	if (0 == P) return;
 
 	{
-		float dt = Device.fTimeDelta;
+		static u32 splashTime = u32(-1);
+		const float dt = splashTime == Device.dwTimeGlobal ? 0.f : Device.fTimeDelta;
+		splashTime = Device.dwTimeGlobal;
 		_IndexStream& _IS = RCache.Index;
 		RCache.set_Shader(_splash_SH);
 		RCache.set_c(s_shader_setup, ps_ssfx_rain_3); // Alpha, Refraction

@@ -1,0 +1,94 @@
+#include "common.h"
+#include "screenspace_mvectors.h"
+
+// Default mode follows the stock terrain pass, including its lighting channels.
+#define main anthology_default_terrain_mid
+#include "deffer_impl_flat.ps"
+#undef main
+
+Texture2D s_lod_texture;
+Texture2D s_lod_texture_dead;
+Texture2D s_lod_texture_winter;
+uniform float4 anthology_flora_style;
+
+static const float2 anthology_lod_offset[4] =
+{
+    float2(0.15f, 0.15f),
+    float2(0.65f, 0.15f),
+    float2(0.15f, 0.65f),
+    float2(0.65f, 0.65f)
+};
+
+f_deffer main(p_flat I)
+{
+    if (anthology_flora_style.x >= 5.5f)
+    {
+        f_deffer original = anthology_default_terrain_mid(I);
+        original.velocity = ssfx_mv_calc(I.vel_curr, I.vel_prev, 0, 0);
+        return original;
+    }
+
+    float4 D = s_base.Sample(smp_base, I.tcdh);
+    float terrainHemi = D.w;
+    const float style = anthology_flora_style.x;
+
+    if (style >= 2.5f && style < 3.5f)
+    {
+        float4 mask = s_mask.Sample(smp_base, I.tcdh);
+        const float maskSum = dot(mask, 1.0f);
+        mask = maskSum > 0.0001f ? mask / maskSum : float4(1.0f, 0.0f, 0.0f, 0.0f);
+
+        const float2 tiledUv = frac(I.tcdh * 100.0f) * 0.35f;
+        float2 lodUv = anthology_lod_offset[0] + tiledUv;
+        float2 previousLodUv = lodUv;
+        float factor = mask.r;
+
+        // Follow SoC Update's MID pass: use the dominant terrain material and
+        // one secondary layer instead of multiplying four dark atlas channels
+        // over each other. This removes mask-shaped blotches at middle range.
+        [unroll]
+        for (int layer = 1; layer < 4; ++layer)
+        {
+            if (mask[layer] > factor)
+            {
+                previousLodUv = lodUv;
+                lodUv = anthology_lod_offset[layer] + tiledUv;
+                factor = mask[layer];
+            }
+        }
+
+        float4 deadLod = s_lod_texture_dead.Sample(smp_base, lodUv) * factor;
+        deadLod += s_lod_texture_dead.Sample(smp_linear, previousLodUv) * (1.0f - factor);
+
+        D.rgb = lerp(D.rgb, float3(0.25f, 0.25f, 0.25f), mask.g);
+        D.rgb = lerp(2.0f * D.rgb * deadLod.rgb, D.rgb,
+            saturate(-2.4f + length(I.position) * 0.013f));
+        terrainHemi = 1.0f;
+    }
+    else if (style >= 3.5f && style < 5.5f)
+    {
+        // Preserve the already working Winter/Late Autumn terrain path.
+        float4 mask = s_mask.Sample(smp_base, I.tcdh);
+        const float maskSum = dot(mask, 1.0f);
+        mask = maskSum > 0.0001f ? mask / maskSum : float4(1.0f, 0.0f, 0.0f, 0.0f);
+
+        const float2 tiledUv = frac(I.tcdh * 100.0f) * 0.35f;
+        float4 winterLod =
+            s_lod_texture_winter.Sample(smp_base, anthology_lod_offset[0] + tiledUv) * mask.r +
+            s_lod_texture_winter.Sample(smp_base, anthology_lod_offset[1] + tiledUv) * mask.g +
+            s_lod_texture_winter.Sample(smp_base, anthology_lod_offset[2] + tiledUv) * mask.b +
+            s_lod_texture_winter.Sample(smp_base, anthology_lod_offset[3] + tiledUv) * mask.a;
+
+        D.rgb = 2.0f * D.rgb * winterLod.rgb;
+        terrainHemi = 1.0f;
+    }
+
+    const float3 Ne = normalize(I.N.xyz);
+    f_deffer result = pack_gbuffer(
+        float4(Ne, terrainHemi),
+        float4(I.position.xyz + Ne * def_virtualh / 2.0h, 0.95f),
+        float4(D.rgb, 0.001f));
+    // Ground must overwrite prior grass/HUD velocity and mask values.
+    result.velocity = ssfx_mv_calc(I.vel_curr, I.vel_prev, 0, 0);
+    return result;
+}

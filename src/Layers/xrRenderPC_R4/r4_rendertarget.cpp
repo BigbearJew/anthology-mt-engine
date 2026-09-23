@@ -570,6 +570,28 @@ CRenderTarget::CRenderTarget()
 	m_upscalerActive = false;
 	m_upscalerResetHistory = true;
 
+	if (ps_r4_upscaler != AnthologyUpscalerOff)
+	{
+		// A stub shader has a different constant layout and cannot present vendor output.
+		static const char* required[] = {
+			"anthology_combine_2_upscaled.ps", "anthology_combine_2_upscaled_d.ps",
+			"anthology_upscale_copy.ps", "anthology_upscale_prepare.ps",
+			"anthology_upscale_prepare_depth.ps", "anthology_upscale_postprocess.ps",
+			"anthology_upscale_postprocess_cm.ps"
+		};
+		for (const char* name : required)
+		{
+			string_path shaderPath, resolved;
+			xr_strconcat(shaderPath, RImplementation.getShaderPath(), name);
+			if (!FS.exist(resolved, "$game_shaders$", shaderPath))
+			{
+				Msg("! [UPSCALER] required shader missing: %s; native fallback selected", name);
+				ps_r4_upscaler = AnthologyUpscalerOff;
+				break;
+			}
+		}
+	}
+
 	if (ps_r4_upscaler != AnthologyUpscalerOff && RImplementation.o.dx10_msaa)
 	{
 		Msg("! [UPSCALER] MSAA is enabled; native fallback selected");

@@ -82,6 +82,40 @@ bool anthology_prepare_flora_textures(LPCSTR base, string512& green, string512& 
 	return hasGreen || hasAutumn || hasDead;
 }
 
+static bool anthology_route_flora_shader(LPCSTR vs, LPCSTR& ps, LPCSTR base,
+    string512& green, string512& autumn, string512& dead)
+{
+    const bool branch = xr_strcmp(ps, "anthology_branch") == 0 || xr_strcmp(ps, "anthology_branch_atoc") == 0;
+    const bool seasonal = branch || xr_strcmp(ps, "anthology_flora") == 0 || xr_strcmp(ps, "anthology_flora_atoc") == 0 ||
+        xr_strcmp(ps, "anthology_grass") == 0 || xr_strcmp(ps, "anthology_grass_atoc") == 0;
+    const bool tree = xr_strcmp(vs, "tree") == 0 || xr_strcmp(vs, "tree_s") == 0 || xr_strcmp(vs, "tree_branch") == 0;
+    const bool basePass = xr_strcmp(ps, "base") == 0 || xr_strcmp(ps, "base_atoc") == 0;
+    const bool treePass = xr_strcmp(ps, "tree_branch") == 0 || xr_strcmp(ps, "tree_branch_atoc") == 0 ||
+        xr_strcmp(ps, "tree_atoc") == 0 || xr_strcmp(ps, "tree_s_atoc") == 0;
+    const bool surv = anthology_starts_with_ci(base, "dex_team\\surv\\veg\\");
+    const bool oakLeaf = xr_strcmp(base, "trees\\trees_oak1leafdif") == 0;
+    if (!seasonal && !((tree || surv || oakLeaf) && basePass) && !(tree && treePass))
+        return false;
+
+    const bool atoc = strstr(ps, "_atoc") != nullptr;
+    if (!anthology_prepare_flora_textures(base, green, autumn, dead))
+    {
+        if (seasonal)
+            ps = branch ? (atoc ? "tree_branch_atoc" : "tree_branch") : (atoc ? "base_atoc" : "base");
+        return false;
+    }
+
+    if (!seasonal)
+    {
+        // Keep SSFX's branch PS paired with its vertex shader, including motion vectors.
+        if (xr_strcmp(vs, "tree_branch") == 0)
+            ps = atoc ? "anthology_branch_atoc" : "anthology_branch";
+        else
+            ps = atoc ? "anthology_flora_atoc" : "anthology_flora";
+    }
+    return true;
+}
+
 void uber_deffer(CBlender_Compile& C, bool hq, LPCSTR _vspec, LPCSTR _pspec, BOOL _aref, LPCSTR _detail_replace,
                  bool DO_NOT_FINISH, bool DO_NOT_WRITE)
 {
@@ -104,17 +138,9 @@ void uber_deffer(CBlender_Compile& C, bool hq, LPCSTR _vspec, LPCSTR _pspec, BOO
 	bool anthologyGroundTextures = false;
 	bool anthologyWinterObjects = false;
 	string512 anthologyWinterObject = {};
-	const bool anthologyBranch = xr_strcmp(_pspec, "anthology_branch") == 0 || xr_strcmp(_pspec, "anthology_branch_atoc") == 0;
-	const bool anthologyFloraATOC = xr_strcmp(_pspec, "anthology_flora_atoc") == 0 || xr_strcmp(_pspec, "anthology_grass_atoc") == 0 || xr_strcmp(_pspec, "anthology_branch_atoc") == 0;
-	if (anthologyBranch || anthologyFloraATOC || xr_strcmp(_pspec, "anthology_flora") == 0 || xr_strcmp(_pspec, "anthology_grass") == 0)
-	{
-		anthologyFloraTextures = anthology_prepare_flora_textures(
-			C.L_textures[0].c_str(), anthologyGreen, anthologyAutumn, anthologyDead);
-		if (!anthologyFloraTextures)
-			_pspec = anthologyBranch ? (anthologyFloraATOC ? "tree_branch_atoc" : "tree_branch") :
-				(anthologyFloraATOC ? "base_atoc" : "base");
-	}
-	else
+	anthologyFloraTextures = anthology_route_flora_shader(
+		_vspec, _pspec, C.L_textures[0].c_str(), anthologyGreen, anthologyAutumn, anthologyDead);
+	if (!anthologyFloraTextures)
 	{
 		const bool baseATOC = xr_strcmp(_pspec, "base_atoc") == 0;
 		if ((baseATOC || xr_strcmp(_pspec, "base") == 0) &&

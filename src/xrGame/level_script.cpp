@@ -479,6 +479,26 @@ CUIStatic* map_get_minimap_spot_static(u16 id, LPCSTR spot_type)
 	return map_spot_static;
 }
 
+::luabind::object map_get_object_spots()
+{
+	// Return values, never engine pointers; callers may keep the snapshot
+	// across map changes without retaining deleted CMapLocation objects.
+	::luabind::object result = ::luabind::newtable(ai().script_engine().lua());
+	if (!g_pGameLevel || !g_pGameLevel->bReady)
+		return result;
+	int index = 1;
+	for (const auto& entry : Level().MapManager().Locations())
+	{
+		if (!entry.actual || !entry.location || !entry.spot_type.size())
+			continue;
+		::luabind::object spot = ::luabind::newtable(ai().script_engine().lua());
+		spot["id"] = entry.object_id;
+		spot["spot_type"] = entry.spot_type.c_str();
+		result[index++] = spot;
+	}
+	return result;
+}
+
 ::luabind::object map_get_object_spots_by_id(u16 id)
 {
 	::luabind::object table = ::luabind::newtable(ai().script_engine().lua());
@@ -2557,6 +2577,7 @@ void CLevel::script_register(lua_State* L)
 			def("map_get_object_spot_static", map_get_spot_static),
 			def("map_get_object_minimap_spot_static", map_get_minimap_spot_static),
 			def("map_get_object_spots_by_id", map_get_object_spots_by_id),
+			def("map_get_object_spots", map_get_object_spots),
 
 			def("add_dialog_to_render", add_dialog_to_render),
 			def("remove_dialog_to_render", remove_dialog_to_render),

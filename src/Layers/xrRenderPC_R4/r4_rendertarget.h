@@ -162,6 +162,17 @@ public:
 	ref_rt rt_secondVP_capture;
 	ref_rt rt_secondVP_scene;
 	u32 m_svpSceneFrame = u32(-1);
+	ref_rt rt_svpReactiveBefore[2], rt_svpReactiveMask[2];
+	ref_texture t_svpReactiveBefore;
+	u32 m_svpReactiveBeforeFrame[2] = {u32(-1), u32(-1)};
+	u32 m_svpReactiveMaskFrame[2] = {u32(-1), u32(-1)};
+	bool svp_live_effects_ready() const {
+		return ps_scope_lense_live_effects != 0 && ps_scope_lense_update_interval > 1 &&
+			m_svpReactiveMaskFrame[0] == Device.dwFrame &&
+			m_svpReactiveMaskFrame[1] == Device.m_SecondViewport.GetSVPCaptureFrame();
+	}
+	void begin_svp_live_effects();
+	void end_svp_live_effects();
 	ref_rt rt_svpMotionDepth;
 	ref_rt rt_svpMotionOwner;
 	ref_rt rt_svpMotionMap[2];

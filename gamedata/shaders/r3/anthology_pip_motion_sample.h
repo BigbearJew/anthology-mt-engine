@@ -62,9 +62,13 @@ float4 pip_sample_motion_map(float2 uv, out bool dynamic_owner)
                         weight_sum += weight;
                     }
                 }
-                if (weight_sum >= 0.75)
-                    result = float4(address_sum / max(weight_sum, 0.75),
-                        weight_sum / max(inverse_depth_sum, 0.000001), smoothstep(0.75, 1.0, weight_sum));
+                // The nearest texel already proves surface ownership. Missing
+                // neighbours are other surfaces, not partial transparency.
+                // Normalize this surface's footprint; mixing the wide view
+                // here creates bright outlines around distant thin geometry.
+                if (weight_sum >= 0.2499)
+                    result = float4(address_sum / weight_sum,
+                        weight_sum / max(inverse_depth_sum, 0.000001), 1.0);
             }
         }
     }

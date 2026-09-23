@@ -339,6 +339,7 @@ int ps_scope_lense_allow_thermal = 1;
 int ps_scope_lense_head_nvg_active = 0;
 int ps_scope_lense_head_thermal_active = 0;
 int ps_scope_lense_ads_is_pip = 0;
+int ps_scope_lense_live_effects = 1;
 int ps_scope_lense_temporal_mode = 1;
 int ps_scope_lense_update_interval = 2;
 float ps_scope_lense_brightness = 1.f;
@@ -1438,6 +1439,7 @@ void xrRender_initconsole()
 	CMD4(CCC_Integer, "scope_lense_head_nvg_active", &ps_scope_lense_head_nvg_active, 0, 1);
 	CMD4(CCC_Integer, "scope_lense_head_thermal_active", &ps_scope_lense_head_thermal_active, 0, 1);
 	CMD4(CCC_Integer, "scope_lense_ads_is_pip", &ps_scope_lense_ads_is_pip, 0, 1);
+	CMD4(CCC_Integer, "scope_lense_live_effects", &ps_scope_lense_live_effects, 0, 1);
 	CMD4(CCC_Integer, "scope_lense_temporal_mode", &ps_scope_lense_temporal_mode, 0, 1);
 	CMD4(CCC_Integer, "scope_lense_update_interval", &ps_scope_lense_update_interval, 1, 8);
 	CMD4(CCC_Float, "scope_lense_brightness", &ps_scope_lense_brightness, 0.5f, 1.5f);

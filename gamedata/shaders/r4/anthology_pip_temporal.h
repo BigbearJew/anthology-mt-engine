@@ -7,6 +7,22 @@ uniform float4 scope_lense_detail;
 uniform float4 scope_lense_quality;
 uniform float4 scope_lense_main_view;
 
+Texture2D<float4> s_pip_main_effects;
+Texture2D<float4> s_pip_capture_effects;
+float4 scope_lense_live_effects;
+
+float3 pip_refresh_effects(float3 color, float2 lens_uv, float2 captured_uv)
+{
+    [branch] if (scope_lense_live_effects.x > 0.5)
+    {
+        float2 main_uv = (lens_uv - 0.5) * scope_lense_main_view.xy + scope_lense_main_view.zw;
+        float3 old_effects = s_pip_capture_effects.SampleLevel(smp_base, saturate(captured_uv), 0).rgb;
+        float3 current_effects = s_pip_main_effects.SampleLevel(smp_base, saturate(main_uv), 0).rgb;
+        color = max(0.0, color - old_effects + current_effects);
+    }
+    return color;
+}
+
 float3 pip_project_capture(float2 uv)
 {
     // One camera transform for the whole image. Texture matches and current
@@ -67,7 +83,7 @@ float4 sample_second_vp(float2 uv)
         if (address.z == 10001.0 && address.w > 0.0)
             result = float4(s_prev_frame.SampleLevel(smp_base, address.xy, 0).rgb, 1.0);
         else if (address.w >= 0.9999)
-            result = float4(pip_capture_color(address.xy), 1.0);
+            result = float4(pip_refresh_effects(pip_capture_color(address.xy), uv, address.xy), 1.0);
         else
         {
             float2 main_uv = (uv - 0.5) * scope_lense_main_view.xy + scope_lense_main_view.zw;
@@ -142,7 +158,11 @@ float4 sample_second_vp_detail(float2 uv)
             result.rgb = lerp(result.rgb, pip_capture_detail(projected.xy, dynamic_owner), coverage);
     }
     else
+    {
         result = float4(pip_capture_detail(projected.xy, dynamic_owner) * projected.z, projected.z);
+        if (scope_lense_motion.x > 0.5)
+            result.rgb = pip_refresh_effects(result.rgb, uv, projected.xy);
+    }
     return result;
 }
 

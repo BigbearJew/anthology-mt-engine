@@ -1,0 +1,10 @@
+// Forward effects have no reliable opaque-surface motion/depth.
+Texture2D<float4> s_pip_opaque;
+Texture2D<float4> s_pip_forward;
+float4 main(float4 position : SV_Position) : SV_Target
+{
+    int2 pixel = int2(position.xy);
+    float3 before = s_pip_opaque.Load(int3(pixel, 0)).rgb;
+    float3 after = s_pip_forward.Load(int3(pixel, 0)).rgb;
+    return float4(after - before, 0.0);
+}

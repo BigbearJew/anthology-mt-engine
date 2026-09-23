@@ -1,0 +1,10 @@
+Texture2D<float> s_image;
+
+float main(float2 tc : TEXCOORD0) : SV_Target
+{
+    uint width;
+    uint height;
+    s_image.GetDimensions(width, height);
+    uint2 pixel = min(uint2(tc * float2(width, height)), uint2(width - 1, height - 1));
+    return s_image.Load(int3(pixel, 0)).x;
+}

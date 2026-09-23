@@ -1,0 +1,174 @@
+#define USE_TDETAIL
+#include "common.h"
+#include "screenspace_mvectors.h"
+
+// Default mode follows the stock terrain pass, including its lighting channels.
+#define main anthology_default_terrain_high
+#include "deffer_impl_flat_d.ps"
+#undef main
+
+// Private headers cannot be overridden by SSS settings or ripple helpers.
+#ifdef SSFX_PUDDLES
+#include "anthology_season_puddles.h"
+#include "anthology_season_ripples.h"
+#endif
+
+Texture2D s_dt_r_dead;
+Texture2D s_dt_g_dead;
+Texture2D s_dt_b_dead;
+Texture2D s_dt_a_dead;
+Texture2D s_dn_r_dead;
+Texture2D s_dn_g_dead;
+Texture2D s_dn_b_dead;
+Texture2D s_dn_a_dead;
+Texture2D s_dt_r_winter;
+Texture2D s_dt_g_winter;
+Texture2D s_dt_b_winter;
+Texture2D s_dt_a_winter;
+Texture2D s_dn_r_winter;
+Texture2D s_dn_g_winter;
+Texture2D s_dn_b_winter;
+Texture2D s_dn_a_winter;
+Texture2D s_lod_texture_winter;
+
+uniform float4 anthology_flora_style;
+
+f_deffer main(p_bumped I)
+{
+    if (anthology_flora_style.x >= 5.5f)
+    {
+        f_deffer original = anthology_default_terrain_high(I);
+        original.velocity = ssfx_mv_calc(I.vel_curr, I.vel_prev, 0, 0);
+        return original;
+    }
+
+    const bool useDead = anthology_flora_style.x >= 2.5f && anthology_flora_style.x < 3.5f;
+    const bool useWinter = anthology_flora_style.x >= 3.5f && anthology_flora_style.x < 5.5f;
+    float4 D = s_base.Sample(smp_base, I.tcdh);
+    float4 L = s_lmap.Sample(smp_base, I.tcdh);
+    float G = 0.001f;
+
+    float4 mask = s_mask.Sample(smp_base, I.tcdh);
+    const float maskSum = dot(mask, 1.0f);
+    mask = maskSum > 0.0001f ? mask / maskSum : float4(1.0f, 0.0f, 0.0f, 0.0f);
+
+#ifdef SSFX_PUDDLES
+    // The seasonal engine path already binds the stock SSS puddle textures,
+    // but this custom terrain shader must consume them explicitly. Keep the
+    // puddle calculation independent from terrain diffuse sampling so water
+    // cannot change the authored seasonal colour or its texture coordinates.
+    const bool permanentPuddles = useDead || (anthology_flora_style.x >= 4.5f && anthology_flora_style.x < 5.5f);
+    float puddleWetness = permanentPuddles ? 1.0f : saturate(rain_params.y);
+
+    const float puddleSizeThreshold = 1.0f - ANTHOLOGY_PUDDLES_SIZE * 1.1f;
+    const float puddleTextureMask = 1.0f -
+        s_puddles_mask.Sample(smp_base, I.tcdh).r;
+    float puddles = saturate((s_puddles_perlin.Sample(
+        smp_base, I.tcdh * 15.0f / ANTHOLOGY_PUDDLES_GLOBAL_SIZE).r -
+        puddleSizeThreshold) * puddleWetness);
+
+    // Only near-horizontal terrain may become standing water. This is the
+    // slope basis used by the installed SSS terrain shader.
+    const float3 terrainUpView = normalize(float3(I.M1.z, I.M2.z, I.M3.z));
+    const float3 terrainUpWorld = mul((float3x3)m_inv_V, terrainUpView);
+    float puddleSlopeMask = 1.0f -
+        max(abs(terrainUpWorld.x), abs(terrainUpWorld.z));
+    puddleSlopeMask = saturate(puddleSlopeMask - 0.9f) * 13.0f;
+    puddles *= puddleSlopeMask * puddleTextureMask;
+    puddles = smoothstep(
+        0.0f,
+        saturate(0.3f - ANTHOLOGY_PUDDLES_BORDER_HARDNESS * 0.3f),
+        puddles);
+
+#ifdef ANTHOLOGY_PUDDLES_RIPPLES
+    const float rainIntensity = saturate(rain_params.x * 1.5f);
+    const float rippleAnimation = timers.x *
+        ((0.01f + rainIntensity * 0.008f) * ANTHOLOGY_PUDDLES_RIPPLES_SPEED);
+    const float rippleScale = 140.0f / ANTHOLOGY_PUDDLES_RIPPLES_SCALE;
+    const float3 ripple0 = s_puddles_normal.Sample(
+        smp_base, I.tcdh * rippleScale + float2(0.0f, rippleAnimation)).xyz;
+    const float3 ripple1 = s_puddles_normal.Sample(
+        smp_base, I.tcdh * rippleScale - float2(0.33f, rippleAnimation)).xyz;
+    float3 ripplesNormal = ((ripple0 + ripple1) * 0.5f) * 2.0f - 1.0f;
+
+    const float2 rainRippleUv = I.tcdh * rippleScale * 1.3f /
+        ANTHOLOGY_PUDDLES_RAIN_RIPPLES_SCALE;
+    float2 rainRipples = anthology_rain_ripples(
+        s_rainsplash,
+        rainRippleUv,
+        float3(0.85f, 1.0f, 10.0f),
+        I.position.z);
+    rainRipples *= rain_params.x * ANTHOLOGY_PUDDLES_RAIN_RIPPLES_INTENSITY;
+    ripplesNormal *= saturate(
+        0.05f + rainIntensity * ANTHOLOGY_PUDDLES_RIPPLES_RAINING_INT *
+        ANTHOLOGY_PUDDLES_RIPPLES_INTENSITY);
+    ripplesNormal = ripplesNormal * 0.666f +
+        float3(rainRipples * 0.333f, 0.0f);
+#else
+    float3 ripplesNormal = 0.0f;
+#endif
+
+#endif
+
+    // Near terrain must use its authored per-layer detail maps, just like the
+    // original SoC Update high pass. The compact LOD atlas belongs only to the
+    // mid/low passes; sampling it here multiplied the already-dark atlas into
+    // the level base map and made Dead Autumn terrain look almost black.
+    float3 dR = (useWinter ? s_dt_r_winter.Sample(smp_base, I.tcdbump) : useDead ? s_dt_r_dead.Sample(smp_base, I.tcdbump) : s_dt_r.Sample(smp_base, I.tcdbump)).rgb * mask.r;
+    float3 dG = (useWinter ? s_dt_g_winter.Sample(smp_base, I.tcdbump) : useDead ? s_dt_g_dead.Sample(smp_base, I.tcdbump) : s_dt_g.Sample(smp_base, I.tcdbump)).rgb * mask.g;
+    float3 dB = (useWinter ? s_dt_b_winter.Sample(smp_base, I.tcdbump) : useDead ? s_dt_b_dead.Sample(smp_base, I.tcdbump) : s_dt_b.Sample(smp_base, I.tcdbump)).rgb * mask.b;
+    float3 dA = (useWinter ? s_dt_a_winter.Sample(smp_base, I.tcdbump) : useDead ? s_dt_a_dead.Sample(smp_base, I.tcdbump) : s_dt_a.Sample(smp_base, I.tcdbump)).rgb * mask.a;
+    // SoC Update stabilizes the asphalt channel before detail multiplication.
+    // Without it the already-dark level base and the dark authored layer are
+    // multiplied together and turn the terrain mask into near-black spots.
+    if (useDead)
+        D.rgb = lerp(D.rgb, float3(0.25f, 0.25f, 0.25f), mask.g);
+    D.rgb = 2.0f * D.rgb * (dR + dG + dB + dA);
+
+    // Winter changes the colour layers, but keeps each compiled terrain's
+    // original normal/gloss set. Mixing foreign normal channels caused black
+    // road and asphalt patches on Anthology maps such as Zaton.
+    // Keep the level's original normal/gloss channels for every season. The
+    // Dead Autumn pack supplies colour layers, not guaranteed compatible XRay
+    // support maps for every Anthology terrain material.
+    float4 nRt = s_dn_r.Sample(smp_base, I.tcdbump).wzyx;
+    float4 nGt = s_dn_g.Sample(smp_base, I.tcdbump).wzyx;
+    float4 nBt = s_dn_b.Sample(smp_base, I.tcdbump).wzyx;
+    float4 nAt = s_dn_a.Sample(smp_base, I.tcdbump).wzyx;
+
+    float3 mixNormal = (nRt.xyz - 0.5f) * mask.r + (nGt.xyz - 0.5f) * mask.g +
+        (nBt.xyz - 0.5f) * mask.b + (nAt.xyz - 0.5f) * mask.a;
+    mixNormal.z *= 0.5f;
+    float3 N = mul(float3x3(I.M1, I.M2, I.M3), mixNormal);
+    G = nRt.w * mask.r + nGt.w * mask.g + nBt.w * mask.b + nAt.w * mask.a;
+
+#ifdef SSFX_PUDDLES
+    // Puddles affect only the water normal and gloss. In particular, do not
+    // tint D.rgb and do not refract the seasonal detail UV: both operations
+    // previously made Dead Autumn terrain look like dark squares or spots.
+    const float3 puddleNormal = mul(
+        (float3x3)m_V,
+        float3(ripplesNormal.x, 1.0f, ripplesNormal.y));
+    N = lerp(N, puddleNormal, saturate(puddles * puddles * 2.0f));
+
+    float puddleGloss = clamp(puddles, 0.0f, ANTHOLOGY_PUDDLES_REFLECTIVITY);
+#ifndef SSFX_NEWGLOSS
+    puddleGloss += saturate(rain_params.y * 2.0f) *
+        ANTHOLOGY_PUDDLES_TERRAIN_EXTRA_WETNESS;
+#endif
+    G = max(G, puddleGloss);
+
+#endif
+
+    // Match the installed SSS terrain material classification in every season.
+    const float ms = 0.95f;
+
+    float4 Ne = float4(normalize(N), D.w);
+    f_deffer result = pack_gbuffer(
+        Ne,
+        float4(I.position.xyz + Ne.xyz * def_virtualh / 2.0h, ms),
+        float4(D.rgb, G));
+    // Ground must overwrite prior grass/HUD velocity and mask values.
+    result.velocity = ssfx_mv_calc(I.vel_curr, I.vel_prev, 0, 0);
+    return result;
+}

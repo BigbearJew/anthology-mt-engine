@@ -1,0 +1,79 @@
+#include "common.h"
+#include "anomaly_shaders.h"
+#include "check_screenspace.h"
+
+#ifdef SSFX_BEEFS_NVG
+#include "night_vision.h"
+#endif
+
+#ifdef SSFX_DEBAND
+#include "screenspace_debanding.h"
+#endif
+
+uniform float4 fakescope_params3;
+uniform float4 anthology_core_res; // xy: core dimensions, zw: reciprocal dimensions
+
+#ifdef SSFX_LUT_INUSE
+#include "screenspace_lut.h"
+#endif
+
+#ifdef SSFX_BLOOM
+Texture2D s_ssfx_bloom;
+#endif
+
+Texture2D s_distort;
+
+#include "img_corrections.h"
+
+float4 main(v2p_aa_AA I) : SV_Target
+{
+	float2 center = I.Tex0;
+	float depth = s_position.SampleLevel(smp_nofilter, I.Tex0, 0.0f).z;
+
+#ifdef USE_DISTORT
+	float4 distort = s_distort.SampleLevel(smp_nofilter, I.Tex0, 0.0f);
+	float2 offset = (distort.xy - (127.0f / 255.0f)) * def_distort;
+	center += offset;
+	float depthOffset = s_position.SampleLevel(smp_nofilter, center, 0.0f).z;
+	if ((depthOffset + 0.001f) < depth)
+		center = I.Tex0;
+#endif
+
+	// Vendor output and every helper sample remain in the same display-referred
+	// domain. Legacy XRay mblur is intentionally not repeated here: SSS motion
+	// blur already ran before this boundary, while packed gbuffer positions are
+	// not valid view-space inputs at display resolution.
+	float3 img = max(s_image.SampleLevel(smp_rtlinear, center, 0.0f).rgb, 0.0f);
+
+#ifdef SSFX_BLOOM
+	float4 bloom = s_ssfx_bloom.Sample(smp_rtlinear, center);
+#else
+	float4 bloom = s_bloom.Sample(smp_rtlinear, center);
+#endif
+
+#ifdef SSFX_DEBAND
+	img = lerp(img, ssfx_debanding(img, I.Tex0.xy), depth <= SKY_EPS);
+#endif
+
+#ifdef SSFX_BEEFS_NVG
+	float nvgGeneration = floor(shader_param_8.x);
+	float nvgTubes = frac(shader_param_8.x) * 10.0f;
+	if (nvgGeneration < 0.01f &&
+		compute_lens_mask(aspect_ratio_correction(I.Tex0), nvgTubes) == 0.0f)
+		img = blend_soft(img, bloom.xyz * bloom.w);
+#else
+	img = blend_soft(img, bloom.xyz * bloom.w);
+#endif
+
+	img = img_corrections(img);
+
+#ifdef SSFX_LUT_INUSE
+	img = ssfx_lut_pp(img);
+#endif
+
+#ifdef USE_DISTORT
+	img = lerp(img, bloom.xyz * def_hdr, distort.z);
+#endif
+
+	return float4(img, 1.0f);
+}

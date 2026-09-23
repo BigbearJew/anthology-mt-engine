@@ -1,0 +1,7 @@
+#include "common.h"
+
+float4 main(p_screen I) : SV_Target
+{
+    // Spatial fallback and display copy retain the same color domain.
+    return float4(s_image.SampleLevel(smp_rtlinear, I.tc0, 0).rgb, 1.0f);
+}

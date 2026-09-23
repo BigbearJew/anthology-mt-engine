@@ -609,6 +609,8 @@ void CRender::render_forward()
 		GMBase.fade_render(); // faded-portals
 		GMBase.r_dsgraph_render_sorted(false); // strict-sorted geoms
 		g_pGamePersistent->Environment().RenderLast(); // rain/thunder-bolts
+		// The contribution belongs to world effects; exclude weapon glass and UI.
+		Target->end_svp_live_effects();
 		GMBase.r_dsgraph_render_sorted_hud();
 	}
 
@@ -762,6 +764,56 @@ bool CRenderTarget::ensure_svp_motion_targets(u32 width, u32 height)
 }
 
 extern Fvector2 GetPipMainViewJitterNdc();
+
+
+void CRenderTarget::begin_svp_live_effects()
+{
+    const u32 view = Device.m_SecondViewport.IsSVPFrame() ? 1 : 0;
+    m_svpReactiveBeforeFrame[view] = u32(-1);
+    m_svpReactiveMaskFrame[view] = u32(-1);
+    if (!ps_scope_lense_live_effects || ps_scope_lense_update_interval <= 1 ||
+        !Device.m_SecondViewport.IsSVPActive() || !svp_motion_supported())
+        return;
+    const u32 width = rt_Generic_0->dwWidth, height = rt_Generic_0->dwHeight;
+    unbind_svp_resources();
+    if (!t_svpReactiveBefore)
+        t_svpReactiveBefore.create("$user$svp_reactive_before");
+    t_svpReactiveBefore->surface_set(nullptr);
+    if (!rt_svpReactiveBefore[view] || rt_svpReactiveBefore[view]->dwWidth != width ||
+        rt_svpReactiveBefore[view]->dwHeight != height)
+    {
+        rt_svpReactiveBefore[view].destroy();
+        rt_svpReactiveMask[view].destroy();
+        rt_svpReactiveBefore[view].create(view ? "$user$svp_opaque_capture" : "$user$svp_opaque_main",
+            width, height, rt_Generic_0->fmt, 1);
+        rt_svpReactiveMask[view].create(view ? "$user$svp_reactive_capture" : "$user$svp_reactive_main",
+            width, height, D3DFMT_A16B16G16R16F, 1);
+    }
+    if (rt_svpReactiveBefore[view]->valid() && rt_svpReactiveMask[view]->valid())
+    {
+        HW.pContext->CopyResource(rt_svpReactiveBefore[view]->pSurface, rt_Generic_0->pSurface);
+        t_svpReactiveBefore->surface_set(rt_svpReactiveBefore[view]->pSurface);
+        m_svpReactiveBeforeFrame[view] = Device.dwFrame;
+    }
+    u_setrt(rt_Generic_0, nullptr, nullptr, main_depth());
+    RImplementation.rmNormal();
+}
+
+void CRenderTarget::end_svp_live_effects()
+{
+    const u32 view = Device.m_SecondViewport.IsSVPFrame() ? 1 : 0;
+    if (m_svpReactiveBeforeFrame[view] != Device.dwFrame)
+        return;
+    unbind_svp_resources();
+    draw_svp_scene(rt_svpReactiveMask[view], 3);
+    m_svpReactiveMaskFrame[view] = Device.dwFrame;
+    unbind_svp_resources();
+    t_svpReactiveBefore->surface_set(nullptr);
+    u_setrt(rt_Generic_0, rt_Heat, rt_ssfx_motion_vectors, main_depth());
+    RCache.set_CullMode(CULL_CCW);
+    RCache.set_Stencil(FALSE);
+    RImplementation.rmNormal();
+}
 
 void CRenderTarget::phase_svp_motion()
 {

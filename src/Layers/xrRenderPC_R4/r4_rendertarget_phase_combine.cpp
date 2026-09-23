@@ -379,6 +379,7 @@ void CRenderTarget::phase_combine()
 		u_setrt(rt_Generic_0_r, 0, 0, rt_MSAADepth->pZRT);
 
 	// Final water rendering ( All the code above can be omitted if the Water module isn't installed )
+	begin_svp_live_effects();
 	RCache.set_xform_world(Fidentity);
 	RImplementation.GMBase.r_dsgraph_render_water();
 	

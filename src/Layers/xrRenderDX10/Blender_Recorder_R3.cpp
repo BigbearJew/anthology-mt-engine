@@ -270,6 +270,8 @@ void CBlender_Compile::r_End()
 {
 	// Optional binding: only PiP materials declaring this resource consume it.
 	r_dx10Texture("s_pip_motion_map", "$user$svp_motion_current");
+	r_dx10Texture("s_pip_main_effects", "$user$svp_reactive_main");
+	r_dx10Texture("s_pip_capture_effects", "$user$svp_reactive_capture");
 	SetMapping();
 	DEV->_CreateConstantTable(ctable, &dest.constants);
 	DEV->_CreateState(RS.GetContainer(), &dest.state);

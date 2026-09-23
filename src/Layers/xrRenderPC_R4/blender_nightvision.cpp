@@ -132,6 +132,14 @@ void CBlender_svp_quality::Compile(CBlender_Compile& C)
 		C.r_End();
 		return;
 	}
+	if (C.iElement == 3)
+	{
+		C.r_Pass("svp_temporal", "svp_reactive", FALSE, FALSE, FALSE);
+		C.r_dx10Texture("s_pip_opaque", "$user$svp_reactive_before");
+		C.r_dx10Texture("s_pip_forward", r2_RT_generic0);
+		C.r_End();
+		return;
+	}
 	if (C.iElement == 5)
 	{
 		C.r_Pass("svp_temporal", "svp_scene_capture", FALSE, FALSE, FALSE);

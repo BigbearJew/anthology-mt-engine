@@ -1222,6 +1222,18 @@ static class scope_lense_detail_setup : public R_constant_setup
 	}
 } scope_lense_detail;
 
+static class scope_lense_live_effects_setup : public R_constant_setup
+{
+    virtual void setup(R_constant* C) {
+#ifdef USE_DX11
+        const bool ready = RImplementation.Target && RImplementation.Target->svp_live_effects_ready();
+        RCache.set_c(C, ready ? 1.f : 0.f, 0.f, 0.f, 0.f);
+#else
+        RCache.set_c(C, 0.f, 0.f, 0.f, 0.f);
+#endif
+    }
+} scope_lense_live_effects;
+
 static class scope_lense_motion_setup : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
@@ -1678,6 +1690,7 @@ void CBlender_Compile::SetMapping()
 	r_Constant("m_blender_mode", &binder_blend_mode);	//--#SM+#--
 	r_Constant("scope_svp", &scope_svp_active);
 	r_Constant("scope_lense_motion", &scope_lense_motion);
+	r_Constant("scope_lense_live_effects", &scope_lense_live_effects);
 	r_Constant("pip_motion_history", &pip_motion_history);
 	r_Constant("scope_lense_quality", &scope_lense_quality);
 	r_Constant("scope_lense_color", &scope_lense_color);
