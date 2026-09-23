@@ -4,11 +4,143 @@ void fix_texture_name(LPSTR fn);
 
 #include "dxRenderDeviceRender.h"
 
+static bool anthology_starts_with_ci(LPCSTR value, LPCSTR prefix)
+{
+	if (!value || !prefix)
+		return false;
+
+	while (*prefix)
+	{
+		if (!*value || tolower(static_cast<unsigned char>(*value)) != tolower(static_cast<unsigned char>(*prefix)))
+			return false;
+		++value;
+		++prefix;
+	}
+
+	return true;
+}
+
+static bool anthology_is_ground_texture(LPCSTR texture)
+{
+	return anthology_starts_with_ci(texture, "detail\\") || anthology_starts_with_ci(texture, "grnd\\") ||
+		anthology_starts_with_ci(texture, "terrain\\");
+}
+
+static bool anthology_prepare_season_texture(LPCSTR season, LPCSTR base, string512& result)
+{
+	if (!season || !season[0] || !base || !base[0])
+	{
+		result[0] = 0;
+		return false;
+	}
+
+	strconcat(sizeof(result), result, "anthology_seasons\\", season, "\\", base);
+	string_path resolved;
+	if (FS.exist(resolved, "$game_textures$", result, ".dds"))
+		return true;
+
+	xr_strcpy(result, base);
+	return false;
+}
+
+bool anthology_prepare_flora_textures(LPCSTR base, string512& green, string512& autumn, string512& dead)
+{
+	const bool levelDetails = xr_strcmp(base, "build_details") == 0;
+	if (levelDetails)
+	{
+		xr_strcpy(green, "build_details_green");
+		xr_strcpy(autumn, "build_details_autumn");
+		xr_strcpy(dead, "build_details_dead");
+	}
+	else
+	{
+		strconcat(sizeof(green), green, "anthology_seasons\\green\\", base);
+		strconcat(sizeof(autumn), autumn, "anthology_seasons\\autumn\\", base);
+		strconcat(sizeof(dead), dead, "anthology_seasons\\dead\\", base);
+	}
+
+	string_path resolved;
+	LPCSTR textureRoot = levelDetails ? "$level$" : "$game_textures$";
+	const bool hasGreen = FS.exist(resolved, textureRoot, green, ".dds");
+	const bool hasAutumn = FS.exist(resolved, textureRoot, autumn, ".dds");
+	const bool hasDead = FS.exist(resolved, textureRoot, dead, ".dds");
+
+	if (!hasGreen)
+		xr_strcpy(green, base);
+	if (!hasAutumn)
+		xr_strcpy(autumn, base);
+	if (!hasDead)
+		xr_strcpy(dead, base);
+
+	if (strstr(Core.Params, "-season_diagnostics"))
+	{
+		static std::atomic<unsigned> logged{0};
+		if (logged.fetch_add(1, std::memory_order_relaxed) < 160)
+			Msg("* [season/flora] base=%s green=%u autumn=%u dead=%u level=%u", base,
+				unsigned(hasGreen), unsigned(hasAutumn), unsigned(hasDead), unsigned(levelDetails));
+	}
+	return hasGreen || hasAutumn || hasDead;
+}
+
 void uber_deffer(CBlender_Compile& C, bool hq, LPCSTR _vspec, LPCSTR _pspec, BOOL _aref, LPCSTR _detail_replace,
                  bool DO_NOT_FINISH, bool DO_NOT_WRITE)
 {
+	string512 anthologyGreen = {};
+	string512 anthologyAutumn = {};
+	string512 anthologyDead = {};
+	string512 anthologyGroundDead = {};
+	string512 anthologyGroundWinter = {};
+	string512 anthologyGroundBump = {};
+	string512 anthologyGroundBumpX = {};
+	string512 anthologyGroundDetail = {};
+	string512 anthologyGroundDetailBump = {};
+	string512 anthologyGroundDetailBumpX = {};
+	string512 anthologyGroundWinterBump = {};
+	string512 anthologyGroundWinterBumpX = {};
+	string512 anthologyGroundWinterDetail = {};
+	string512 anthologyGroundWinterDetailBump = {};
+	string512 anthologyGroundWinterDetailBumpX = {};
+	bool anthologyFloraTextures = false;
+	bool anthologyGroundTextures = false;
+	bool anthologyWinterObjects = false;
+	string512 anthologyWinterObject = {};
+	const bool anthologyBranch = xr_strcmp(_pspec, "anthology_branch") == 0 || xr_strcmp(_pspec, "anthology_branch_atoc") == 0;
+	const bool anthologyFloraATOC = xr_strcmp(_pspec, "anthology_flora_atoc") == 0 || xr_strcmp(_pspec, "anthology_grass_atoc") == 0 || xr_strcmp(_pspec, "anthology_branch_atoc") == 0;
+	if (anthologyBranch || anthologyFloraATOC || xr_strcmp(_pspec, "anthology_flora") == 0 || xr_strcmp(_pspec, "anthology_grass") == 0)
+	{
+		anthologyFloraTextures = anthology_prepare_flora_textures(
+			C.L_textures[0].c_str(), anthologyGreen, anthologyAutumn, anthologyDead);
+		if (!anthologyFloraTextures)
+			_pspec = anthologyBranch ? (anthologyFloraATOC ? "tree_branch_atoc" : "tree_branch") :
+				(anthologyFloraATOC ? "base_atoc" : "base");
+	}
+	else
+	{
+		const bool baseATOC = xr_strcmp(_pspec, "base_atoc") == 0;
+		if ((baseATOC || xr_strcmp(_pspec, "base") == 0) &&
+			anthology_is_ground_texture(C.L_textures[0].c_str()))
+		{
+			const bool hasDeadGround = anthology_prepare_season_texture(
+				"dead", C.L_textures[0].c_str(), anthologyGroundDead);
+			const bool hasWinterGround = anthology_prepare_season_texture(
+				"winter", C.L_textures[0].c_str(), anthologyGroundWinter);
+			if (!hasWinterGround)
+				xr_strcpy(anthologyGroundWinter, anthologyGroundDead);
+			anthologyGroundTextures = hasDeadGround || hasWinterGround;
+			if (anthologyGroundTextures)
+				_pspec = baseATOC ? "anthology_ground_atoc" : "anthology_ground";
+		}
+		else if (baseATOC || xr_strcmp(_pspec, "base") == 0)
+		{
+			anthologyWinterObjects = anthology_prepare_season_texture(
+				"winter_objects", C.L_textures[0].c_str(), anthologyWinterObject);
+			if (anthologyWinterObjects)
+				_pspec = baseATOC ? "anthology_winter_object_atoc" : "anthology_winter_object";
+		}
+	}
+
 	// Uber-parse
-	string256 fname, fnameA, fnameB;
+	string256 fname = {}, fnameA = {}, fnameB = {};
 	xr_strcpy(fname, *C.L_textures[0]); //. andy if (strext(fname)) *strext(fname)=0;
 	fix_texture_name(fname);
 	ref_texture _t;
@@ -85,6 +217,31 @@ void uber_deffer(CBlender_Compile& C, bool hq, LPCSTR _vspec, LPCSTR _pspec, BOO
 			else
 				xr_strcat(ps, "_d");
 		}
+	}
+
+	// Resolve seasonal support maps only after both bump/flat paths initialize the names.
+	if (anthologyGroundTextures)
+	{
+		anthology_prepare_season_texture("dead", fnameA, anthologyGroundBump);
+		anthology_prepare_season_texture("dead", fnameB, anthologyGroundBumpX);
+		anthology_prepare_season_texture("dead", dt, anthologyGroundDetail);
+		anthology_prepare_season_texture("dead", texDetailBump, anthologyGroundDetailBump);
+		anthology_prepare_season_texture("dead", texDetailBumpX, anthologyGroundDetailBumpX);
+		if (!anthologyGroundBump[0]) xr_strcpy(anthologyGroundBump, anthologyGroundDead);
+		if (!anthologyGroundBumpX[0]) xr_strcpy(anthologyGroundBumpX, anthologyGroundDead);
+		if (!anthologyGroundDetail[0]) xr_strcpy(anthologyGroundDetail, anthologyGroundDead);
+		if (!anthologyGroundDetailBump[0]) xr_strcpy(anthologyGroundDetailBump, anthologyGroundDead);
+		if (!anthologyGroundDetailBumpX[0]) xr_strcpy(anthologyGroundDetailBumpX, anthologyGroundDead);
+		if (!anthology_prepare_season_texture("winter", fnameA, anthologyGroundWinterBump))
+			xr_strcpy(anthologyGroundWinterBump, anthologyGroundBump);
+		if (!anthology_prepare_season_texture("winter", fnameB, anthologyGroundWinterBumpX))
+			xr_strcpy(anthologyGroundWinterBumpX, anthologyGroundBumpX);
+		if (!anthology_prepare_season_texture("winter", dt, anthologyGroundWinterDetail))
+			xr_strcpy(anthologyGroundWinterDetail, anthologyGroundDetail);
+		if (!anthology_prepare_season_texture("winter", texDetailBump, anthologyGroundWinterDetailBump))
+			xr_strcpy(anthologyGroundWinterDetailBump, anthologyGroundDetailBump);
+		if (!anthology_prepare_season_texture("winter", texDetailBumpX, anthologyGroundWinterDetailBumpX))
+			xr_strcpy(anthologyGroundWinterDetailBumpX, anthologyGroundDetailBumpX);
 	}
 
 	// HQ
@@ -168,6 +325,30 @@ void uber_deffer(CBlender_Compile& C, bool hq, LPCSTR _vspec, LPCSTR _pspec, BOO
 	//C.r_Sampler		("s_bumpD",		dt,					false,	D3DTADDRESS_WRAP,	D3DTEXF_ANISOTROPIC,D3DTEXF_LINEAR,	D3DTEXF_ANISOTROPIC);
 	//C.r_Sampler		("s_detail",	dt,					false,	D3DTADDRESS_WRAP,	D3DTEXF_ANISOTROPIC,D3DTEXF_LINEAR,	D3DTEXF_ANISOTROPIC);
 	C.r_dx10Texture("s_base", C.L_textures[0]);
+	if (anthologyWinterObjects)
+		C.r_dx10Texture("s_base_winter", anthologyWinterObject);
+	if (anthologyFloraTextures)
+	{
+		C.r_dx10Texture("s_base_green", anthologyGreen);
+		C.r_dx10Texture("s_base_autumn", anthologyAutumn);
+		C.r_dx10Texture("s_base_dead", anthologyDead);
+		C.r_dx10Texture("s_snow_tree", "anthology_seasons\\detail_snow_ground");
+	}
+	if (anthologyGroundTextures)
+	{
+		C.r_dx10Texture("s_base_dead", anthologyGroundDead);
+		C.r_dx10Texture("s_bump_dead", anthologyGroundBump);
+		C.r_dx10Texture("s_bumpX_dead", anthologyGroundBumpX);
+		C.r_dx10Texture("s_detail_dead", anthologyGroundDetail);
+		C.r_dx10Texture("s_detailBump_dead", anthologyGroundDetailBump);
+		C.r_dx10Texture("s_detailBumpX_dead", anthologyGroundDetailBumpX);
+		C.r_dx10Texture("s_base_winter", anthologyGroundWinter);
+		C.r_dx10Texture("s_bump_winter", anthologyGroundWinterBump);
+		C.r_dx10Texture("s_bumpX_winter", anthologyGroundWinterBumpX);
+		C.r_dx10Texture("s_detail_winter", anthologyGroundWinterDetail);
+		C.r_dx10Texture("s_detailBump_winter", anthologyGroundWinterDetailBump);
+		C.r_dx10Texture("s_detailBumpX_winter", anthologyGroundWinterDetailBumpX);
+	}
 	C.r_dx10Texture("s_bumpX", fnameB); // should be before base bump
 	C.r_dx10Texture("s_bump", fnameA);
 	C.r_dx10Texture("s_bumpD", dt);

@@ -3,6 +3,7 @@
 #pragma once
 
 // Common
+extern ECORE_API int ps_r__FloraStyle;
 extern ECORE_API float ps_ssfx_fog_scattering;
 extern ECORE_API Fvector4 ps_ssfx_motionblur;
 extern ECORE_API Fvector4 ps_ssfx_taa;
@@ -215,6 +216,17 @@ extern ECORE_API int ps_scope_lense_allow_thermal;
 extern ECORE_API int ps_scope_lense_head_nvg_active;
 extern ECORE_API int ps_scope_lense_head_thermal_active;
 extern ECORE_API int ps_scope_lense_ads_is_pip;
+extern ECORE_API int ps_scope_lense_temporal_mode;
+extern ECORE_API int ps_scope_lense_update_interval;
+extern ECORE_API float ps_scope_lense_brightness;
+extern ECORE_API float ps_scope_lense_contrast;
+extern ECORE_API float ps_scope_lense_saturation;
+extern ECORE_API float ps_scope_lense_gamma;
+extern ECORE_API float ps_scope_lense_sharpness;
+extern ECORE_API float ps_scope_lense_grain;
+extern ECORE_API float ps_scope_lense_dirt;
+extern ECORE_API int ps_scope_lense_tint;
+extern ECORE_API float ps_scope_lense_tint_intensity;
 
 IC int ScopeLenseQualityTier()
 {

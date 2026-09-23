@@ -170,6 +170,7 @@ public:
 #endif
 public:
 	CSoundRender_Source* i_create_source(LPCSTR name);
+    CSoundRender_Source* i_season_source(CSoundRender_Source* source, bool winter);
 	void i_destroy_source(CSoundRender_Source* S);
 	CSoundRender_Emitter* i_play(ref_sound* S, BOOL _loop, float delay);
 	void i_start(CSoundRender_Emitter* E);

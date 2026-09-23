@@ -1055,6 +1055,29 @@ static void invalid_parameter_handler(
 	uintptr_t reserved
 )
 {
+	// Keep module-relative addresses usable even when the installation has no PDB.
+	static thread_local bool reporting_stack = false;
+	if (!reporting_stack)
+	{
+		reporting_stack = true;
+		void* frames[48] = {};
+		const USHORT count = CaptureStackBackTrace(0, 48, frames, nullptr);
+		Msg("! [crt-invalid] thread=%lu frames=%u", GetCurrentThreadId(), static_cast<unsigned>(count));
+		for (USHORT i = 0; i < count; ++i)
+		{
+			HMODULE module = nullptr;
+			char name[MAX_PATH] = {};
+			GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+				reinterpret_cast<LPCSTR>(frames[i]), &module);
+			if (module)
+				GetModuleFileNameA(module, name, MAX_PATH - 1);
+			const uintptr_t offset = reinterpret_cast<uintptr_t>(frames[i]) - reinterpret_cast<uintptr_t>(module);
+			Msg("! [crt-invalid/frame] %02u module=%s rva=0x%llx address=%p", static_cast<unsigned>(i), name,
+				static_cast<unsigned long long>(offset), frames[i]);
+		}
+		xrLogger::FlushLog();
+		reporting_stack = false;
+	}
 	bool ignore_always = false;
 
 	string4096 expression_;

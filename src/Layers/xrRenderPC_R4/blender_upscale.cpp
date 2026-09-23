@@ -45,22 +45,19 @@ void CBlender_upscale::Compile(CBlender_Compile& C)
 
 	if (C.iElement == 3)
 	{
-		// Convert the typeless D24S8 main depth SRV to a dedicated R32_FLOAT
-		// texture. FSR must not receive the packed depth/stencil resource.
-		C.r_Pass("stub_notransform_t", "anthology_upscale_depth", FALSE, FALSE, FALSE);
-		C.r_dx10Texture("s_image", r2_RT_depth);
+		// One MRT pass exports aligned FP16 color and sampled R32 device depth.
+		C.r_Pass("stub_notransform_t", "anthology_upscale_prepare_depth", FALSE, FALSE, FALSE);
+		C.r_dx10Texture("s_image", r2_RT_generic0);
+		C.r_dx10Texture("s_depth", r2_RT_depth);
 		C.r_End();
 		return;
 	}
 
 	if (C.iElement == 1)
 	{
-		// Recover a linear scene signal from the SSS split-tonemap target before
-		// handing it to the temporal vendor. This pass also performs the required
-		// UNORM-to-FP16 conversion without an invalid CopyResource.
+		// Spatial SVP fallback only needs the UNORM-to-FP16 color conversion.
 		C.r_Pass("stub_notransform_t", "anthology_upscale_prepare", FALSE, FALSE, FALSE);
 		C.r_dx10Texture("s_image", r2_RT_generic0);
-		C.r_dx10Sampler("smp_rtlinear");
 		C.r_End();
 		return;
 	}

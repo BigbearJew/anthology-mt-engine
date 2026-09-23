@@ -26,6 +26,7 @@
 #include "blender_lut.h"
 #include "blender_upscale.h"
 #include "UpscalerRuntime.h"
+#include "../xrRender/PipMotionShaderContract.h"
 
 // HDR10
 #include "blender_hdr10_bloom.h"
@@ -453,27 +454,61 @@ void CRenderTarget::create_svp_rt_bank(u32 width, u32 height)
 	Msg("* PiP qRT bank: %ux%u, %u paired targets", width, height, (u32)m_svpRtBank.size());
 }
 
+namespace
+{
+void SwapSvpSurface(CRT& main, CRT& alternate)
+{
+    VERIFY(main.fmt == alternate.fmt);
+    main.pTexture->swap_surface_state(*alternate.pTexture);
+    std::swap(main.pSurface, alternate.pSurface);
+    std::swap(main.pRT, alternate.pRT);
+    std::swap(main.pZRT, alternate.pZRT);
+    std::swap(main.pUAView, alternate.pUAView);
+    std::swap(main.dwWidth, alternate.dwWidth);
+    std::swap(main.dwHeight, alternate.dwHeight);
+}
+}
+
 void CRenderTarget::swap_svp_rt_bank()
 {
-	for (SvpRtPair& pair : m_svpRtBank)
-	{
-		CRT& main = **pair.main;
-		CRT& reduced = *pair.reduced;
-		VERIFY(main.fmt == reduced.fmt);
-		main.pTexture->swap_surface_state(*reduced.pTexture);
-		std::swap(main.pSurface, reduced.pSurface);
-		std::swap(main.pRT, reduced.pRT);
-		std::swap(main.pZRT, reduced.pZRT);
-		std::swap(main.pUAView, reduced.pUAView);
-		std::swap(main.dwWidth, reduced.dwWidth);
-		std::swap(main.dwHeight, reduced.dwHeight);
-	}
+    for (SvpRtPair& pair : m_svpRtBank)
+        SwapSvpSurface(**pair.main, *pair.reduced);
+}
+
+void CRenderTarget::swap_svp_effect_history()
+{
+    if (m_svpSssHistory && m_svpSssHistory->valid())
+        SwapSvpSurface(*rt_ssfx_sss, *m_svpSssHistory);
+    if (m_svpSsrHistory && m_svpSsrHistory->valid())
+        SwapSvpSurface(*rt_ssfx_ssr, *m_svpSsrHistory);
 }
 
 bool CRenderTarget::begin_svp_quality_pass()
 {
-	if (!Device.m_SecondViewport.IsSVPFrame() || ps_scope_lense_quality_percent >= 100 || m_svpRtBankActive)
+	if (!Device.m_SecondViewport.IsSVPFrame() || m_svpRtBankActive || m_svpEffectHistoryActive)
 		return false;
+    // Preserve SRVs to the last main view before swapping the PiP bank.
+    // These aliases retain the resources; no full-resolution texture copy.
+    if (rt_ssfx_ssr && rt_ssfx_ssr->valid() && rt_ssfx_prevPos && rt_ssfx_prevPos->valid())
+    {
+        if (!m_svpMainReflection) m_svpMainReflection.create("$user$svp_main_reflection");
+        if (!m_svpMainEffectPosition) m_svpMainEffectPosition.create("$user$svp_main_effect_position");
+        m_svpMainReflection->surface_set(rt_ssfx_ssr->pSurface);
+        m_svpMainEffectPosition->surface_set(rt_ssfx_prevPos->pSurface);
+    }
+	// At native resolution only the two persistent SSFX histories need isolation.
+	// Scratch targets are overwritten by the following main frame as before.
+	if (ps_scope_lense_quality_percent >= 100)
+	{
+		if (rt_ssfx_sss && rt_ssfx_sss->valid() && !m_svpSssHistory)
+			m_svpSssHistory.create("$user$svp_sss_history", m_renderWidth, m_renderHeight, rt_ssfx_sss->fmt);
+		if (rt_ssfx_ssr && rt_ssfx_ssr->valid() && !m_svpSsrHistory)
+			m_svpSsrHistory.create("$user$svp_ssr_history", m_renderWidth, m_renderHeight, rt_ssfx_ssr->fmt);
+		unbind_svp_resources();
+		swap_svp_effect_history();
+		m_svpEffectHistoryActive = true;
+		return true;
+	}
 	const u32 quality = clampr(ps_scope_lense_quality_percent, 25, 100);
 	const u32 width = _max(320u, ((m_renderWidth * quality / 100u) + 1u) & ~1u);
 	const u32 height = _max(180u, ((m_renderHeight * quality / 100u) + 1u) & ~1u);
@@ -494,6 +529,13 @@ bool CRenderTarget::begin_svp_quality_pass()
 
 void CRenderTarget::end_svp_quality_pass()
 {
+	if (m_svpEffectHistoryActive)
+	{
+		unbind_svp_resources();
+		swap_svp_effect_history();
+		m_svpEffectHistoryActive = false;
+		return;
+	}
 	if (!m_svpRtBankActive)
 		return;
 	unbind_svp_resources();
@@ -510,6 +552,18 @@ CRenderTarget::CRenderTarget()
 {
 	CTimer startupTimer;
 	startupTimer.Start();
+	// Resolve through the live VFS once, before creating shader tasks. Merely
+	// finding an SSS helper is insufficient: older versions have no owner IDs.
+	string_path motionHelper;
+	xr_strconcat(motionHelper, RImplementation.getShaderPath(), "screenspace_mvectors.h");
+	IReader* motionSource = FS.r_open("$game_shaders$", motionHelper);
+	if (motionSource)
+	{
+		m_svpMotionOwnerSupport = IsPipMotionOwnerShaderCompatible(motionSource->pointer(), motionSource->length());
+		FS.r_close(motionSource);
+	}
+	Msg(m_svpMotionOwnerSupport ? "* [PiP] v149 motion owner/foliage shader verified" :
+		"! [PiP] Motion owner shader missing or incompatible; stable PiP reuse selected");
 	u32 SampleCount = 1;
 	m_renderWidth = Device.dwWidth;
 	m_renderHeight = Device.dwHeight;
@@ -768,6 +822,9 @@ CRenderTarget::CRenderTarget()
 			rt_ui_pda.create(r2_RT_ui, Device.dwWidth, Device.dwHeight, D3DFMT_A8R8G8B8);
 		}
 		Device.m_SecondViewport.InvalidateSVPContent();
+		rt_secondVP_scene.create("$user$viewport2_scene", Device.dwWidth, Device.dwHeight, rt_secondVP->fmt, 1);
+		t_svpMotionPrevious.create("$user$svp_motion_previous");
+		t_svpMotionCurrent.create("$user$svp_motion_current");
 		Device.mMainHudCamSaved = false;
 		Device.mMainGrassBendersValidMask = 0;
 
@@ -1561,6 +1618,8 @@ CRenderTarget::~CRenderTarget()
 	g_main_temporal_upscaler_active = false;
 	g_main_taa_render_size.set(float(Device.dwWidth), float(Device.dwHeight));
 	g_AnthologyUpscaler.Shutdown();
+	if (t_svpMotionPrevious) t_svpMotionPrevious->surface_set(nullptr);
+	if (t_svpMotionCurrent) t_svpMotionCurrent->surface_set(nullptr);
 	_RELEASE(t_ss_async);
 
 	// Textures

@@ -3,6 +3,8 @@
 #include "../xrRender/FBasicVisual.h"
 #include "../../xrEngine/customhud.h"
 #include "../../xrEngine/xr_object.h"
+#include "../../xrEngine/IRenderable.h"
+#include "../../xrEngine/SvpMotionEpoch.h"
 #include "../../xrEngine/EngineThreading.h"
 #include "../xrRender/SkeletonCustom.h"
 #include "../../xrParticles/ParticlesAsyncManager.h"
@@ -139,6 +141,22 @@ public:
 		}
 	}
 };
+
+class MainSceneGpuProfileScope
+{
+	const bool mainView;
+public:
+	MainSceneGpuProfileScope() : mainView(!Device.m_SecondViewport.IsSVPFrame())
+	{
+		if (mainView)
+			g_AnthologyUpscaler.BeginSceneGpuProfile();
+	}
+	~MainSceneGpuProfileScope()
+	{
+		if (mainView)
+			g_AnthologyUpscaler.EndSceneGpuProfile();
+	}
+};
 }
 
 void CRender::render_menu()
@@ -222,12 +240,14 @@ extern u32 g_r;
 void CRender::Render()
 {
 	PIX_EVENT(CRender_Render);
+	Target->m_svpSceneFrame = u32(-1);
 
 	rmNormal();
 
 	bool _menu_pp = g_pGamePersistent ? g_pGamePersistent->OnRenderPPUI_query() : false;
 	if (_menu_pp)
 	{
+		Device.m_SecondViewport.InvalidateSVPContent();
 		render_menu();
 		return;
 	};
@@ -238,12 +258,14 @@ void CRender::Render()
 	if (!(g_pGameLevel && g_hud)
 		|| bMenu)
 	{
+		Device.m_SecondViewport.InvalidateSVPContent();
 		Target->u_setrt(Device.dwWidth, Device.dwHeight, HW.pBaseRT,NULL,NULL, HW.pBaseZB);
 		return;
 	}
 
 	if (m_bFirstFrameAfterReset)
 	{
+		Device.m_SecondViewport.InvalidateSVPContent();
 		for (light* L : v_all_lights)//critical!!!
 			L->m_moving_frames = 0;
 
@@ -251,6 +273,7 @@ void CRender::Render()
 		return;
 	}
 
+	MainSceneGpuProfileScope mainSceneGpuProfile;
 	if (Target->upscaler_active() && !Device.m_SecondViewport.IsSVPFrame())
 		g_AnthologyUpscaler.UpdateJitter(Device.dwFrame);
 
@@ -451,9 +474,15 @@ void CRender::Render()
 		}
 		else if (RImplementation.o.ssfx_sss)
 		{
-			// The local-light composite is not a temporal owner and must be neutral
-			// for the lens camera. Keep rt_ssfx_sss intact: it is the presented
-			// main view's directional-shadow history and an SVP clear corrupts it.
+			// PiP uses the current capture only. Its shadow target is isolated even
+			// at 100% resolution; main-camera temporal history is never overwritten.
+			if (ps_ssfx_sss_quality.z > 0)
+				Target->phase_ssfx_sss();
+			else
+			{
+				const float neutral[4] = { 1, 1, 1, 1 };
+				HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss->pRT, neutral);
+			}
 			FLOAT NeutralLocalSSS[4] = { 1, 1, 1, 1 };
 			HW.pContext->ClearRenderTargetView(Target->rt_ssfx_sss_tmp->pRT, NeutralLocalSSS);
 		}
@@ -627,6 +656,234 @@ void CRenderTarget::phase_svp_quality(ID3D11Texture2D* source)
 	RCache.Render(D3DPT_TRIANGLELIST, offset, 0, 4, 0, 2);
 }
 
+void CRenderTarget::draw_svp_scene(const ref_rt& target, int element)
+{
+	if (element == 1)
+		u_setrt(target, rt_svpMotionOwner, nullptr, nullptr);
+	else
+		u_setrt(target, nullptr, nullptr, nullptr);
+	D3D_VIEWPORT viewport = {0.f, 0.f, float(target->dwWidth), float(target->dwHeight), 0.f, 1.f};
+	HW.pContext->RSSetViewports(1, &viewport);
+	RCache.set_CullMode(CULL_NONE);
+	RCache.set_Stencil(FALSE);
+	RCache.set_ColorWriteEnable();
+	u32 offset = 0;
+	const u32 color = color_rgba(255, 255, 255, 255);
+	FVF::TL* vertices = (FVF::TL*)RCache.Vertex.Lock(4, g_combine->vb_stride, offset);
+	vertices->set(0.f, 1.f, 0.f, 1.f, color, 0.f, 1.f); ++vertices;
+	vertices->set(0.f, 0.f, 0.f, 1.f, color, 0.f, 0.f); ++vertices;
+	vertices->set(1.f, 1.f, 0.f, 1.f, color, 1.f, 1.f); ++vertices;
+	vertices->set(1.f, 0.f, 0.f, 1.f, color, 1.f, 0.f);
+	RCache.Vertex.Unlock(4, g_combine->vb_stride);
+	if (element >= 0)
+		RCache.set_Element(s_svp_quality->E[element]);
+	RCache.set_Geometry(g_combine);
+	RCache.Render(D3DPT_TRIANGLELIST, offset, 0, 4, 0, 2);
+}
+
+bool CRenderTarget::svp_scene_capture_required() const
+{
+	const bool headNvg = (ps_scope_lense_allow_nvg && ps_scope_lense_head_nvg_active) || ps_r2_nightvision > 0;
+	// Native optic NVG is applied by the lens shader after scene sampling.
+	// Keep engine imaging and HDR output in their established display domain.
+	return !Device.m_SecondViewport.IsSVPThermal() && !headNvg &&
+		ps_r2_heatvision == 0 && !RImplementation.o.dx11_hdr10;
+}
+
+void CRenderTarget::phase_svp_scene()
+{
+	m_svpSceneFrame = u32(-1);
+	m_svpMotionDepthFrame = u32(-1);
+	if (!svp_scene_capture_required() || !rt_secondVP_scene || !rt_secondVP_scene->valid())
+		return;
+	// Ordinary optics return before the display SMAA pass in phase_combine.
+	// Resolve edges here, once per fresh capture, in the active PiP RT bank.
+	phase_smaa();
+	RCache.set_Stencil(FALSE);
+	// Read generic0 while it still belongs to the active PiP bank, before LUT,
+	// bloom composition and postprocess. Main view runs those effects once.
+	unbind_svp_resources();
+	draw_svp_scene(rt_secondVP_scene);
+	m_svpSceneFrame = Device.dwFrame;
+	if (svp_motion_supported() && ensure_svp_motion_targets(rt_Position->dwWidth, rt_Position->dwHeight))
+	{
+		unbind_svp_resources();
+		m_svpMotionDepthOwnerGeneration = GetRenderSurfaceOwnerGeneration();
+		draw_svp_scene(rt_svpMotionDepth, 1);
+		if (m_svpMotionDepthOwnerGeneration == GetRenderSurfaceOwnerGeneration())
+			m_svpMotionDepthFrame = Device.dwFrame;
+	}
+	unbind_svp_resources();
+	u_setrt(rt_Generic_0, nullptr, nullptr, nullptr);
+	RImplementation.rmNormal();
+}
+
+bool CRenderTarget::svp_motion_supported() const
+{
+	return m_svpMotionOwnerSupport && ps_scope_lense_temporal_mode != 0 && !RImplementation.o.dx10_msaa &&
+		RImplementation.o.ssfx_motionvectors && rt_Position && rt_Position->valid() &&
+		rt_ssfx_motion_vectors && rt_ssfx_motion_vectors->valid() &&
+		rt_Position->dwWidth == rt_ssfx_motion_vectors->dwWidth &&
+		rt_Position->dwHeight == rt_ssfx_motion_vectors->dwHeight && svp_scene_capture_required();
+}
+
+bool CRenderTarget::ensure_svp_motion_targets(u32 width, u32 height)
+{
+	if (!width || !height)
+		return false;
+	if (rt_svpMotionDepth && rt_svpMotionDepth->valid() &&
+		rt_svpMotionDepth->dwWidth == width && rt_svpMotionDepth->dwHeight == height)
+		return rt_svpMotionOwner && rt_svpMotionOwner->valid() &&
+			rt_svpMotionMap[0] && rt_svpMotionMap[0]->valid() &&
+			rt_svpMotionMap[1] && rt_svpMotionMap[1]->valid();
+	unbind_svp_resources();
+	t_svpMotionPrevious->surface_set(nullptr);
+	t_svpMotionCurrent->surface_set(nullptr);
+	rt_svpMotionDepth.destroy();
+	rt_svpMotionOwner.destroy();
+	rt_svpMotionMap[0].destroy();
+	rt_svpMotionMap[1].destroy();
+	rt_svpMotionDepth.create("$user$svp_motion_depth", width, height, D3DFMT_R32F, 1);
+	rt_svpMotionOwner.create("$user$svp_motion_owner", width, height, D3DFMT_R16F, 1);
+	rt_svpMotionMap[0].create("$user$svp_motion_map0", width, height, D3DFMT_A32B32G32R32F, 1);
+	rt_svpMotionMap[1].create("$user$svp_motion_map1", width, height, D3DFMT_A32B32G32R32F, 1);
+	m_svpMotionHistory = false;
+	m_svpMotionSeeded = false;
+	m_svpMotionIndex = 0;
+	m_svpMotionCaptureFrame = u32(-1);
+	m_svpMotionOutputFrame = u32(-1);
+	if (!rt_svpMotionDepth->valid() || !rt_svpMotionOwner->valid() ||
+		!rt_svpMotionMap[0]->valid() || !rt_svpMotionMap[1]->valid())
+		return false;
+	const float clear[4] = {};
+	HW.pContext->ClearRenderTargetView(rt_svpMotionMap[0]->pRT, clear);
+	HW.pContext->ClearRenderTargetView(rt_svpMotionMap[1]->pRT, clear);
+	return true;
+}
+
+extern Fvector2 GetPipMainViewJitterNdc();
+
+void CRenderTarget::phase_svp_motion()
+{
+	if (m_svpMotionOutputFrame == Device.dwFrame)
+		return;
+	m_svpMotionOutputFrame = u32(-1);
+	const auto& viewport = Device.m_SecondViewport;
+	const u64 ownerGeneration = GetRenderSurfaceOwnerGeneration();
+	if (Device.m_SecondViewport.IsSVPFrame() || !Device.m_SecondViewport.IsSVPActive() ||
+		!svp_motion_supported() || Device.dwPrecacheFrame || Device.Paused() ||
+		!viewport.IsSVPTextureReady() || !rt_svpMotionDepth || !rt_svpMotionDepth->valid() ||
+		m_svpMotionDepthFrame != viewport.GetSVPCaptureFrame() ||
+		m_svpMotionDepthOwnerGeneration != ownerGeneration ||
+		!g_pGamePersistent || !g_pGamePersistent->m_pGShaderConstants)
+	{
+		m_svpMotionHistory = false;
+		m_svpMotionSeeded = false;
+		return;
+	}
+	if (m_svpMotionSerial == Device.mMainRenderSerial && m_svpMotionHistory)
+		return;
+
+	const u32 captureFrame = viewport.GetSVPCaptureFrame();
+	SvpMotionEpochInput epochInput;
+	epochInput.currentMainSerial = Device.mMainRenderSerial;
+	epochInput.previousMainSerial = m_svpMotionSerial;
+	epochInput.currentTime = Device.dwTimeGlobal;
+	epochInput.previousTime = m_svpMotionTime;
+	epochInput.captureTime = viewport.GetSVPCaptureTime();
+	epochInput.hasHistory = m_svpMotionHistory;
+	epochInput.wasSeeded = m_svpMotionSeeded;
+	epochInput.newCapture = captureFrame != m_svpMotionCaptureFrame;
+	epochInput.ownerGenerationMatches = m_svpMotionOwnerGeneration == ownerGeneration;
+	const SvpMotionEpochDecision epoch = SelectSvpMotionEpoch(epochInput);
+	const bool previousValid = epoch.previousValid;
+
+	const Fmatrix& currentView = Device.mView_saved;
+	const Fmatrix& currentProjection = Device.mProject_saved;
+	const Fmatrix& previousView = previousValid ? m_svpMotionView : currentView;
+	const Fmatrix& previousProjection = previousValid ? m_svpMotionProjection : currentProjection;
+	const Fmatrix& captureProjection = viewport.GetSVPCapturedProjection();
+	const float scopeFov = clampr(g_pGamePersistent->m_pGShaderConstants->hud_params.y, 1.f, 170.f);
+	const float tangent = tanf(deg2rad(scopeFov) * 0.5f);
+	Fvector4 crop;
+	crop.set(currentProjection._11 * tangent / _max(Device.fASPECT, 0.01f),
+		currentProjection._22 * tangent, 0.5f + currentProjection._31 * 0.5f,
+		0.5f - currentProjection._32 * 0.5f);
+	const Fvector4& previousCrop = previousValid ? m_svpMotionCrop : crop;
+	const Fvector2 jitterNdc = GetPipMainViewJitterNdc();
+	Fvector2 jitter;
+	jitter.set(jitterNdc.x * 0.5f, -jitterNdc.y * 0.5f);
+	const Fvector2& previousJitter = previousValid ? m_svpMotionJitter : jitter;
+	Fmatrix currentInverse, previousInverse, currentToCapture, previousToCapture;
+	currentInverse.invert(currentView);
+	previousInverse.invert(previousView);
+	currentToCapture.mul(viewport.GetSVPCapturedView(), currentInverse);
+	previousToCapture.mul(viewport.GetSVPCapturedView(), previousInverse);
+
+	unbind_svp_resources();
+	t_svpMotionCurrent->surface_set(nullptr);
+	t_svpMotionPrevious->surface_set(rt_svpMotionMap[m_svpMotionIndex]->pSurface);
+	RCache.set_Element(s_svp_quality->E[2]);
+	RCache.set_c("pip_current_main", crop);
+	RCache.set_c("pip_previous_main", previousCrop);
+	RCache.set_c("pip_main_jitter", jitter.x, jitter.y, previousJitter.x, previousJitter.y);
+	RCache.set_c("pip_current_ray", 1.f / currentProjection._11, 1.f / currentProjection._22,
+		-currentProjection._31 / currentProjection._11, -currentProjection._32 / currentProjection._22);
+	RCache.set_c("pip_previous_ray", 1.f / previousProjection._11, 1.f / previousProjection._22,
+		-previousProjection._31 / previousProjection._11, -previousProjection._32 / previousProjection._22);
+	// Scope raster jitter is zero; its actual unjittered projection is published with RGB.
+	RCache.set_c("pip_capture_projection", captureProjection._11 * 0.5f, -captureProjection._22 * 0.5f,
+		0.5f + captureProjection._31 * 0.5f, 0.5f - captureProjection._32 * 0.5f);
+	RCache.set_c("pip_current_to_capture", currentToCapture);
+	RCache.set_c("pip_previous_to_capture", previousToCapture);
+	RCache.set_c("pip_motion_control", float(epoch.mode), previousValid ? 1.f : 0.f,
+		epoch.alpha, float(epoch.elapsed) * 0.001f);
+	RCache.set_c("pip_motion_limits", 0.02f, 0.005f, 64.f, 4.f);
+	const u32 next = m_svpMotionIndex ^ 1;
+	draw_svp_scene(rt_svpMotionMap[next], -1);
+	unbind_svp_resources();
+	t_svpMotionPrevious->surface_set(nullptr);
+	if (GetRenderSurfaceOwnerGeneration() != ownerGeneration)
+	{
+		m_svpMotionHistory = false;
+		m_svpMotionSeeded = false;
+		u_setrt(rt_Generic_0, nullptr, nullptr, main_depth());
+		RImplementation.rmNormal();
+		return;
+	}
+	t_svpMotionCurrent->surface_set(rt_svpMotionMap[next]->pSurface);
+	m_svpMotionIndex = next;
+	m_svpMotionHistory = true;
+	m_svpMotionSeeded = epoch.mode != 0;
+	m_svpMotionCaptureFrame = captureFrame;
+	m_svpMotionSerial = Device.mMainRenderSerial;
+	m_svpMotionOwnerGeneration = ownerGeneration;
+	m_svpMotionTime = Device.dwTimeGlobal;
+	m_svpMotionView = currentView;
+	m_svpMotionProjection = currentProjection;
+	m_svpMotionCrop = crop;
+	m_svpMotionJitter = jitter;
+	if (mt_FrameProfile)
+	{
+		static u32 samples = 0, seeds = 0, propagated = 0, unavailable = 0;
+		++samples;
+		seeds += epoch.mode == 1 ? 1 : 0;
+		propagated += epoch.mode == 2 ? 1 : 0;
+		unavailable += epoch.mode == 0 ? 1 : 0;
+		if (samples >= 240)
+		{
+			Msg("* [pip-motion/profile] main=%u seed=%u propagate=%u unavailable=%u interval=%d",
+				samples, seeds, propagated, unavailable, ps_scope_lense_update_interval);
+			samples = seeds = propagated = unavailable = 0;
+		}
+	}
+	// During startup, keep the detailed v143 image until a capture can be seeded.
+	if (m_svpMotionSeeded)
+		m_svpMotionOutputFrame = Device.dwFrame;
+	u_setrt(rt_Generic_0, nullptr, nullptr, main_depth());
+	RImplementation.rmNormal();
+}
+
 void CRender::RenderToTarget(RRT target)
 {
 	ref_rt* RT = nullptr;
@@ -645,9 +902,35 @@ void CRender::RenderToTarget(RRT target)
 	}
 
 	ID3DTexture2D* pBuffer = nullptr;
-	HW.m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBuffer);
-	HW.pContext->CopyResource((*RT)->pSurface, pBuffer);
-	pBuffer->Release();
+	ID3DTexture2D* pSource = nullptr;
+	const bool sceneCapture = target == rtSVP && Target->svp_scene_capture_required();
+	if (sceneCapture)
+	{
+		if (Device.m_SecondViewport.isCamReady && Target->m_svpSceneFrame == Device.dwFrame &&
+			Target->rt_secondVP_scene && Target->rt_secondVP_scene->valid())
+			pSource = Target->rt_secondVP_scene->pSurface;
+	}
+	else if (SUCCEEDED(HW.m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBuffer)))
+		pSource = pBuffer;
+
+	if (pSource)
+	{
+		if (target == rtSVP)
+			Target->unbind_svp_resources();
+		HW.pContext->CopyResource((*RT)->pSurface, pSource);
+		if (target == rtSVP)
+		{
+			Target->u_setrt(Device.dwWidth, Device.dwHeight, HW.pBaseRT, nullptr, nullptr, HW.pBaseZB);
+			RImplementation.rmNormal();
+		}
+	}
+	else if (target == rtSVP)
+	{
+		// The caller's publication guard also checks isCamReady. Do not publish
+		// an older pending image after a failed capture.
+		Device.m_SecondViewport.InvalidateSVPContent();
+	}
+	_RELEASE(pBuffer);
 
 	if (target == rtSVP && RImplementation.o.ssfx_water)
 	{

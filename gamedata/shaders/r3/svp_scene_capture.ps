@@ -1,0 +1,9 @@
+// Match the main scene sampled by the reticle before LUT and display effects.
+// UVs address the complete active PiP target, including its reduced-resolution bank.
+Texture2D<float4> s_svp_scene;
+SamplerState smp_rtlinear;
+
+float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    return s_svp_scene.SampleLevel(smp_rtlinear, uv, 0);
+}

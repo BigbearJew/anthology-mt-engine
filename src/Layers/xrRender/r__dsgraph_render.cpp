@@ -16,6 +16,10 @@
 
 #include "../../xrEngine/xr_object.h"
 
+#ifdef USE_DX11
+#include "PipMotionHistory.h"
+#endif
+
 using namespace R_dsgraph;
 
 extern float r_ssaDISCARD;
@@ -29,7 +33,7 @@ ICF float calcLOD(float ssa/*fDistSq*/, float R)
 }
 
 template<typename T, bool Reverse>
-void CDSGraphManager::r_dsgraph_render_graph_sorted(R_dsgraph::mapDSGraphItems<T, Reverse>& graph, bool _clear)
+void CDSGraphManager::r_dsgraph_render_graph_sorted(R_dsgraph::mapDSGraphItems<T, Reverse>& graph, bool _clear, bool static_geometry)
 {
     if (graph.empty())
         return;
@@ -48,6 +52,9 @@ void CDSGraphManager::r_dsgraph_render_graph_sorted(R_dsgraph::mapDSGraphItems<T
 		//{
 		//	//new feature
 		//}
+#ifdef USE_DX11
+		const PipMotionHistoryScope motion_scope(item.pObject, static_geometry);
+#endif
 		V->Render(calcLOD(item.ssa, V->vis.sphere.R));
 	}
 
@@ -165,6 +172,8 @@ void CDSGraphManager::r_dsgraph_render_graph(RenderQueueArray& queues, u32 _prio
 			float LOD = calcLOD(item.ssa, item.pVisual->vis.sphere.R);
 #ifdef USE_DX11
 			RCache.LOD.set_LOD(LOD);
+			// Write even when the constant table was reused by the previous packet.
+			const PipMotionHistoryScope motion_scope(item.pObject, static_geometry);
 #endif
 			item.pVisual->Render(LOD);
 		}
@@ -245,7 +254,7 @@ void CDSGraphManager::r_dsgraph_render_sorted(bool render_hud)
 	{
 		PROF_EVENT("r_dsgraph_render_sorted");
 		// Rendering
-		r_dsgraph_render_graph_sorted(RGraph.mapStaticSorted.Sorted, true);
+	r_dsgraph_render_graph_sorted(RGraph.mapStaticSorted.Sorted, true, true);
 		r_dsgraph_render_graph_sorted(RGraph.mapDynamicSorted.Sorted, true);
 	}
 
@@ -308,7 +317,7 @@ void CDSGraphManager::r_dsgraph_render_emissive(bool clear, bool renderHUD)
 {
 	PROF_EVENT("r_dsgraph_render_emissive");
 #if	RENDER!=R_R1
-	r_dsgraph_render_graph_sorted(RGraph.mapStaticSorted.Emissive, clear);
+	r_dsgraph_render_graph_sorted(RGraph.mapStaticSorted.Emissive, clear, true);
 	r_dsgraph_render_graph_sorted(RGraph.mapDynamicSorted.Emissive, clear);
 	
 	//	HACK: Calculate this only once
@@ -392,7 +401,7 @@ void CDSGraphManager::r_dsgraph_render_wmarks()
 	PROF_EVENT("r_dsgraph_render_wmarks");
 #if	RENDER!=R_R1
 	// Rendering
-	r_dsgraph_render_graph_sorted(RGraph.mapStaticSorted.Wmark);
+	r_dsgraph_render_graph_sorted(RGraph.mapStaticSorted.Wmark, true, true);
 	r_dsgraph_render_graph_sorted(RGraph.mapDynamicSorted.Wmark);
 	//	HACK: Calculate this only once
 	CHudInitializer initalizer(true);
@@ -409,7 +418,7 @@ void CDSGraphManager::r_dsgraph_render_distort()
 {
 	PROF_EVENT("r_dsgraph_render_distort");
 	// Rendering
-	r_dsgraph_render_graph_sorted(RGraph.mapStaticSorted.Distort, true);
+	r_dsgraph_render_graph_sorted(RGraph.mapStaticSorted.Distort, true, true);
 	r_dsgraph_render_graph_sorted(RGraph.mapDynamicSorted.Distort, true);
 	//	HACK: Calculate this only once
 	CHudInitializer initalizer(true);

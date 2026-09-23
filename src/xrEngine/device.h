@@ -58,6 +58,8 @@ public:
 
 	// Engine flow-control
 	u32 dwFrame;
+	u64 mMainRenderSerial = 0;
+	bool IsSVPRenderOnlyFrame() const;
 
 	float fTimeDelta;
 	float fTimeGlobal;
@@ -152,6 +154,8 @@ public:
 };
 
 // refs
+#include "SvpTemporalSchedule.h"
+
 class ENGINE_API CRenderDevice : public CRenderDeviceBase
 {
 public:
@@ -165,6 +169,17 @@ public:
 						  //(ia ii?ao auou iaiuoa 2 - ea?aue aoi?ie eaa?, ?ai aieuoa oai aieaa ieceee FPS ai aoi?ii au?ii?oa)
 		u16 ownerId = u16(-1);
 		int qualityPreset = -1;
+		SvpTemporalSchedule temporalSchedule;
+		Fvector capturedPosition = {0.f, 0.f, 0.f};
+		Fvector capturedDirection = {0.f, 0.f, 1.f};
+		Fvector capturedTop = {0.f, 1.f, 0.f};
+		Fmatrix capturedView;
+		Fmatrix capturedProjection;
+		float capturedFov = 0.f;
+		int capturedNvg = 0;
+		int capturedQuality = 100;
+		u32 capturedTime = 0;
+		u32 capturedFrame = u32(-1);
 
 	public:
 		bool isCamReady = false; // Oeaa aioiaiinoe eaia?u (FOV, iiceoey, e o.i) e ?aiaa?o aoi?iai au?ii?oa
@@ -173,7 +188,11 @@ public:
 		void SetSVPActive(bool bState);
 		bool    IsSVPFrame();
 		IC bool IsSVPTextureReady() const { return isTextureReady; }
-		IC void MarkSVPTextureReady() { isTextureReady = isActive; }
+		void MarkSVPTextureReady();
+		IC const Fmatrix& GetSVPCapturedView() const { return capturedView; }
+		IC const Fmatrix& GetSVPCapturedProjection() const { return capturedProjection; }
+		IC u32 GetSVPCaptureTime() const { return capturedTime; }
+		IC u32 GetSVPCaptureFrame() const { return capturedFrame; }
 		void InvalidateSVPContent();
 		void SetSVPOwner(u16 id)
 		{

@@ -101,6 +101,8 @@ CKinematics::CKinematics()
 
 	m_is_original_lod = false;
 	UCalc_ThisFrame = false;
+	Matrix_Prev.identity();
+	Matrix_Temp.identity();
 }
 
 CKinematics::~CKinematics()
@@ -125,6 +127,7 @@ CKinematics::~CKinematics()
 
 void CKinematics::IBoneInstances_Create()
 {
+	motionHistoryEpoch.Reset();
 	// VERIFY2				(bones->size() < 64, "More than 64 bones is a crazy thing!");
 	u32 size = bones->size();
 	bone_instances = xr_alloc<CBoneInstance>(size);
@@ -454,6 +457,7 @@ void CKinematics::CalculateBones_Invalidate()
 void CKinematics::Spawn()
 {
 	inherited::Spawn();
+	motionHistoryEpoch.Reset();
 	// bones
 	for (u32 i = 0; i < bones->size(); i++)
 		bone_instances[i].construct();
@@ -468,6 +472,7 @@ void CKinematics::Spawn()
 void CKinematics::Depart()
 {
 	inherited::Depart();
+	motionHistoryEpoch.Reset();
 	// wallmarks
 	ClearWallmarks();
 

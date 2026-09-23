@@ -111,7 +111,7 @@ protected:
 	xr_vector<CEntityAlive*> deadNPCs;
 
 public:
-	u32 o_workload_frame;
+	u32 o_workload_time;
 	u32 o_workload_rframe;
 public:
 	CAI_Crow();

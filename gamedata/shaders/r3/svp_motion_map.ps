@@ -1,0 +1,528 @@
+// Actual engine vectors propagate addresses into immutable PiP RGB, never RGB.
+// See tools/tests/pip_motion_map_contract.md for epochs and matrix conventions.
+#pragma warning(disable: 3577) // Keep finite guards also in constant-folded paths.
+Texture2D<float4> s_pip_main_position;
+Texture2D<float4> s_pip_main_motion;
+Texture2D<float4> s_pip_previous_map;
+Texture2D<float> s_pip_capture_depth;
+Texture2D<float> s_pip_capture_owner;
+
+float4 pip_current_main;
+float4 pip_previous_main;
+float4 pip_main_jitter;
+float4 pip_current_ray;
+float4 pip_previous_ray;
+float4 pip_capture_projection;
+float4x4 pip_current_to_capture;
+float4x4 pip_previous_to_capture;
+float4 pip_motion_control;
+float4 pip_motion_limits;
+
+static const int2 pip_offsets[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
+
+bool pip_inside(float2 uv)
+{
+    return all(isfinite(uv)) && all(uv >= 0.0) && all(uv <= 1.0);
+}
+
+bool pip_valid_depth(float depth)
+{
+    return isfinite(depth) && depth > 0.01 && depth < 10000.0;
+}
+
+bool pip_valid_owner(float owner)
+{
+    return isfinite(owner) && (owner == 1.0 || (owner > -0.5 && owner <= -0.00006103515625));
+}
+
+float pip_motion_owner(float encoded)
+{
+    if (!isfinite(encoded) || encoded >= 2.0) return 0.0;
+    if (encoded >= 0.0 || encoded < -0.5) return 1.0;
+    return pip_valid_owner(encoded) ? encoded : 0.0;
+}
+
+float pip_depth_tolerance(float a, float b)
+{
+    return max(pip_motion_limits.x, 0.001) + max(pip_motion_limits.y, 0.0) * max(a, b);
+}
+
+bool pip_same_depth(float a, float b)
+{
+    return pip_valid_depth(a) && pip_valid_depth(b) && abs(a - b) <= pip_depth_tolerance(a, b);
+}
+
+float pip_weight(float2 fraction, int index)
+{
+    float2 weight = lerp(1.0 - fraction, fraction, float2(pip_offsets[index]));
+    return weight.x * weight.y;
+}
+
+float3 pip_view_point(float2 uv, float depth, float4 ray)
+{
+    float2 ndc = uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+    return float3(ndc * ray.xy + ray.zw, 1.0) * depth;
+}
+
+float pip_capture_z(float2 uv)
+{
+    if (!pip_inside(uv)) return 0.0;
+    uint width, height;
+    s_pip_capture_depth.GetDimensions(width, height);
+    int2 pixel = min(int2(uv * float2(width, height)), int2(width - 1, height - 1));
+    return s_pip_capture_depth.Load(int3(pixel, 0));
+}
+
+float pip_capture_id(float2 uv)
+{
+    if (!pip_inside(uv)) return 0.0;
+    uint width, height;
+    s_pip_capture_owner.GetDimensions(width, height);
+    int2 pixel = min(int2(uv * float2(width, height)), int2(width - 1, height - 1));
+    return s_pip_capture_owner.Load(int3(pixel, 0));
+}
+
+bool pip_main_sample(float2 uv, int layer, out float depth, out float2 motion, out float owner, out bool valid_motion, out bool rigid_world)
+{
+    depth = 0.0;
+    motion = 0.0;
+    owner = 0.0;
+    valid_motion = false;
+    rigid_world = false;
+    float2 raster_uv = uv + pip_main_jitter.xy;
+    if (!pip_inside(raster_uv)) return false;
+
+    uint width, height;
+    s_pip_main_position.GetDimensions(width, height);
+    int2 last = int2(width - 1, height - 1);
+    float2 dimensions = float2(width, height);
+    int2 nearest_pixel = clamp(int2(raster_uv * dimensions), int2(0, 0), last);
+    if (layer >= 0)
+        nearest_pixel = clamp(int2(floor(raster_uv * dimensions - 0.5)) + pip_offsets[layer], int2(0, 0), last);
+    float reference_depth = s_pip_main_position.Load(int3(nearest_pixel, 0)).z;
+    float4 reference_motion = s_pip_main_motion.Load(int3(nearest_pixel, 0));
+    if (!pip_valid_depth(reference_depth) || !isfinite(reference_motion.z) || reference_motion.z > 0.5) return false;
+    owner = pip_motion_owner(reference_motion.w);
+    rigid_world = reference_motion.w == 0.0;
+    valid_motion = all(isfinite(reference_motion.xy)) && all(abs(reference_motion.xy) <= 1.0) &&
+        pip_valid_owner(owner);
+
+    float2 grid = raster_uv * dimensions - 0.5;
+    int2 base = int2(floor(grid));
+    float2 fraction = frac(grid);
+    float inverse_depth_sum = 0.0;
+    float weight_sum = 0.0;
+    [unroll] for (int tap = 0; tap < 4; ++tap)
+    {
+        int2 pixel = clamp(base + pip_offsets[tap], int2(0, 0), last);
+        float z = s_pip_main_position.Load(int3(pixel, 0)).z;
+        float4 tap_motion = s_pip_main_motion.Load(int3(pixel, 0));
+        // Vectors on opposite sides of an object boundary must not be averaged.
+        bool compatible = pip_same_depth(reference_depth, z) && isfinite(tap_motion.z) && tap_motion.z <= 0.5;
+        if (pip_valid_owner(owner)) compatible = compatible && pip_motion_owner(tap_motion.w) == owner;
+        if (valid_motion)
+            compatible = compatible && all(isfinite(tap_motion.xy)) && isfinite(tap_motion.w) && tap_motion.w < 2.0 &&
+                all(abs((tap_motion.xy - reference_motion.xy) * dimensions) <= 0.5);
+        if (compatible)
+        {
+            float weight = pip_weight(fraction, tap);
+            inverse_depth_sum += weight / z;
+            if (valid_motion) motion += weight * tap_motion.xy;
+            weight_sum += weight;
+        }
+    }
+    if (weight_sum <= 0.0001) return false;
+    depth = weight_sum / inverse_depth_sum;
+    motion /= weight_sum;
+    return true;
+}
+
+float4 pip_history_footprint(float2 previous_lens_uv, float2 previous_main_uv,
+    float3 current_point, float4 rejected, bool seed)
+{
+    float4 result = rejected;
+    uint width, height;
+    s_pip_previous_map.GetDimensions(width, height);
+    float2 dimensions = float2(width, height);
+    int2 center = int2(previous_lens_uv * dimensions);
+    // Search one wide-camera footprint. The reference address is extrapolated
+    // to the requested ray before validating it against the detailed capture.
+    uint main_width, main_height;
+    s_pip_main_position.GetDimensions(main_width, main_height);
+    int2 radius = int2(clamp(ceil(dimensions / max(float2(main_width, main_height) * abs(pip_previous_main.xy), 1.0)), 1.0, 16.0));
+    static const int2 offsets[8] = {int2(-1,0),int2(1,0),int2(0,-1),int2(0,1),int2(-1,-1),int2(1,-1),int2(-1,1),int2(1,1)};
+    float2 uv_sum = 0.0;
+    float weight_sum = 0.0;
+    float2 reference_uv = 0.0;
+    float reference_z = 0.0;
+    [loop] for (int tap = 0; tap < 8; ++tap)
+    {
+        int2 pixel = center + offsets[tap] * radius;
+        if (any(pixel < 0) || any(pixel >= int2(width, height))) continue;
+        float4 history = s_pip_previous_map.Load(int3(pixel, 0));
+        if (!pip_valid_depth(history.z) || history.w != rejected.w) continue;
+        float3 previous_point = mul(pip_previous_to_capture,
+            float4(pip_view_point(previous_main_uv, history.z, pip_previous_ray), 1.0)).xyz;
+        if (!all(isfinite(previous_point)) || distance(previous_point, current_point) >
+            max(pip_motion_limits.z, 0.0) * pip_motion_control.w + pip_depth_tolerance(rejected.z, history.z)) continue;
+        float3 candidate_point = 0.0;
+        if (seed)
+            candidate_point = lerp(previous_point, current_point, pip_motion_control.z);
+        else
+        {
+            if (!pip_inside(history.xy) || pip_capture_id(history.xy) != rejected.w) continue;
+            float captured_z = pip_capture_z(history.xy);
+            if (!pip_valid_depth(captured_z)) continue;
+            float2 reference_main = ((float2(pixel) + 0.5) / dimensions - 0.5) * pip_previous_main.xy + pip_previous_main.zw;
+            float3 delta = pip_view_point(previous_main_uv, history.z, pip_previous_ray) -
+                pip_view_point(reference_main, history.z, pip_previous_ray);
+            delta = mul(pip_previous_to_capture, float4(delta, 0.0)).xyz;
+            candidate_point = float3((history.xy - pip_capture_projection.zw) / pip_capture_projection.xy, 1.0) * captured_z + delta;
+        }
+        if (!all(isfinite(candidate_point)) || !pip_valid_depth(candidate_point.z)) continue;
+        float2 candidate_uv = candidate_point.xy / candidate_point.z * pip_capture_projection.xy + pip_capture_projection.zw;
+        float candidate_z = pip_capture_z(candidate_uv);
+        if (!pip_same_depth(candidate_point.z, candidate_z) || pip_capture_id(candidate_uv) != rejected.w) continue;
+        if (weight_sum > 0.0 && (!pip_same_depth(reference_z, candidate_z) ||
+            length((candidate_uv - reference_uv) * dimensions) > max(pip_motion_limits.w, 1.0))) continue;
+        if (weight_sum == 0.0) { reference_uv = candidate_uv; reference_z = candidate_z; }
+        float2 distance_pixels = float2(pixel) + 0.5 - previous_lens_uv * dimensions;
+        float weight = 1.0 / (1.0 + dot(distance_pixels, distance_pixels));
+        uv_sum += candidate_uv * weight;
+        weight_sum += weight;
+    }
+    if (weight_sum > 0.0)
+    {
+        float2 uv = uv_sum / weight_sum;
+        if (pip_capture_id(uv) == rejected.w && pip_same_depth(reference_z, pip_capture_z(uv)))
+            result.xy = uv;
+    }
+    return result;
+}
+
+float4 pip_reconstruct(float2 uv, int layer)
+{
+    float2 main_uv = (uv - 0.5) * pip_current_main.xy + pip_current_main.zw;
+    float depth;
+    float2 motion;
+    float owner;
+    bool valid_motion;
+    bool rigid_world;
+    if (!pip_main_sample(main_uv, layer, depth, motion, owner, valid_motion, rigid_world)) return float4(-1.0, -1.0, 0.0, 0.0);
+    // Depth and owner remain useful for the next epoch when this address fails.
+    float4 result = float4(-1.0, -1.0, depth, owner);
+    if (!valid_motion || !all(isfinite(pip_motion_control)) || !all(isfinite(pip_motion_limits)) ||
+        !(pip_motion_control.x == 1.0 || pip_motion_control.x == 2.0) || !(pip_motion_control.y >= 0.5) ||
+        !(pip_motion_control.w > 0.0 && pip_motion_control.w <= 0.25) || any(abs(pip_previous_main.xy) < 0.00001)) return result;
+
+    bool seed = pip_motion_control.x < 1.5;
+    if (seed && (!isfinite(pip_motion_control.z) || pip_motion_control.z < 0.0 ||
+        pip_motion_control.z > 1.0)) return result;
+
+    float2 previous_main_uv = main_uv - motion;
+    float2 previous_lens_uv = (previous_main_uv - pip_previous_main.zw) / pip_previous_main.xy + 0.5;
+    if (!pip_inside(previous_main_uv + pip_main_jitter.zw) || !pip_inside(previous_lens_uv)) return result;
+
+    float3 current_point = mul(pip_current_to_capture,
+        float4(pip_view_point(main_uv, depth, pip_current_ray), 1.0)).xyz;
+    if (!all(isfinite(current_point))) return result;
+
+    // Keep world/foliage detail in its captured pose. Wide-view wind vectors
+    // cannot resolve individual magnified leaves and must not deform their RGB.
+    // Dynamic owners still follow their actual object/skeleton motion below.
+    if (owner == 1.0 && pip_valid_depth(current_point.z))
+    {
+        float2 direct_uv = current_point.xy / current_point.z * pip_capture_projection.xy + pip_capture_projection.zw;
+        float captured_z = pip_capture_z(direct_uv);
+        if (pip_same_depth(current_point.z, captured_z))
+        {
+            // Intersect the current ray with the high-resolution capture depth.
+            // Main G-buffer FP16 rounding must not quantize the image address.
+            float3 origin = mul(pip_current_to_capture, float4(0, 0, 0, 1)).xyz;
+            float3 ray = current_point - origin;
+            if (abs(ray.z) > 0.00001)
+            {
+                float3 refined = origin + ray * ((captured_z - origin.z) / ray.z);
+                direct_uv = refined.xy / refined.z * pip_capture_projection.xy + pip_capture_projection.zw;
+                if (pip_same_depth(captured_z, pip_capture_z(direct_uv)) && pip_capture_id(direct_uv) == owner)
+                {
+                    result.xy = direct_uv;
+                    return result;
+                }
+            }
+        }
+    }
+
+    uint width, height;
+    s_pip_previous_map.GetDimensions(width, height);
+    int2 last = int2(width - 1, height - 1);
+    float2 dimensions = float2(width, height);
+    float2 grid = previous_lens_uv * dimensions - 0.5;
+    int2 base = int2(floor(grid));
+    float2 fraction = frac(grid);
+    float4 taps[4];
+    float capture_depths[4];
+    float weights[4];
+    int reference = -1;
+    float reference_weight = -1.0;
+    float speed_distance = max(pip_motion_limits.z, 0.0) * pip_motion_control.w;
+    [unroll] for (int tap = 0; tap < 4; ++tap)
+    {
+        int2 pixel = clamp(base + pip_offsets[tap], int2(0, 0), last);
+        taps[tap] = s_pip_previous_map.Load(int3(pixel, 0));
+        weights[tap] = pip_weight(fraction, tap);
+        capture_depths[tap] = 0.0;
+        bool valid = pip_valid_depth(taps[tap].z) && taps[tap].w == owner;
+        if (!seed)
+        {
+            valid = valid && pip_inside(taps[tap].xy) && pip_capture_id(taps[tap].xy) == owner;
+            if (valid) capture_depths[tap] = pip_capture_z(taps[tap].xy);
+            valid = valid && pip_valid_depth(capture_depths[tap]);
+        }
+        if (valid)
+        {
+            float3 previous_point = mul(pip_previous_to_capture,
+                float4(pip_view_point(previous_main_uv, taps[tap].z, pip_previous_ray), 1.0)).xyz;
+            valid = all(isfinite(previous_point)) &&
+                distance(previous_point, current_point) <= speed_distance + pip_depth_tolerance(depth, taps[tap].z);
+        }
+        if (valid && weights[tap] > reference_weight)
+        {
+            reference = tap;
+            reference_weight = weights[tap];
+        }
+        if (!valid) weights[tap] = 0.0;
+    }
+    if (reference < 0) return pip_history_footprint(previous_lens_uv, previous_main_uv, current_point, result, seed);
+
+    float inverse_depth_sum = 0.0;
+    float2 capture_uv_sum = 0.0;
+    float inverse_capture_depth_sum = 0.0;
+    float weight_sum = 0.0;
+    float2 nominal_step = abs(2.0 * pip_capture_projection.xy * pip_previous_ray.xy * pip_previous_main.xy) / dimensions;
+    float max_map_span = max(pip_motion_limits.w, 1.0) * max(nominal_step.x, nominal_step.y);
+    [unroll] for (int gather = 0; gather < 4; ++gather)
+    {
+        bool compatible = weights[gather] > 0.0 && pip_same_depth(taps[reference].z, taps[gather].z);
+        if (!seed)
+        {
+            compatible = compatible && pip_same_depth(capture_depths[reference], capture_depths[gather]) &&
+                distance(taps[reference].xy, taps[gather].xy) <= max_map_span;
+        }
+        if (compatible)
+        {
+            float weight = weights[gather];
+            inverse_depth_sum += weight / taps[gather].z;
+            if (!seed)
+            {
+                capture_uv_sum += weight * taps[gather].xy;
+                inverse_capture_depth_sum += weight / capture_depths[gather];
+            }
+            weight_sum += weight;
+        }
+    }
+    // Do not snap to one side when a substantial part of the footprint is missing.
+    if (weight_sum < 0.75) return pip_history_footprint(previous_lens_uv, previous_main_uv, current_point, result, seed);
+
+    float2 capture_uv;
+    float expected_capture_depth;
+    if (seed)
+    {
+        float previous_depth = weight_sum / inverse_depth_sum;
+        float3 previous_point = mul(pip_previous_to_capture,
+            float4(pip_view_point(previous_main_uv, previous_depth, pip_previous_ray), 1.0)).xyz;
+        float3 capture_point = lerp(previous_point, current_point, pip_motion_control.z);
+        if (!all(isfinite(capture_point)) || !pip_valid_depth(capture_point.z)) return result;
+        capture_uv = capture_point.xy / capture_point.z * pip_capture_projection.xy + pip_capture_projection.zw;
+        expected_capture_depth = capture_point.z;
+    }
+    else
+    {
+        capture_uv = capture_uv_sum / weight_sum;
+        expected_capture_depth = weight_sum / inverse_capture_depth_sum;
+    }
+    float sampled_capture_depth = pip_capture_z(capture_uv);
+    if (!pip_same_depth(expected_capture_depth, sampled_capture_depth) || pip_capture_id(capture_uv) != owner) return result;
+    result.xy = capture_uv;
+    return result;
+}
+
+// A zoomed main pixel can cover several capture pixels. At thin world/sky
+// edges its nearest depth is not evidence that every subpixel is sky. Recover
+// only captured world geometry supported by the CURRENT bilinear footprint.
+float4 pip_world_coverage(float2 uv, float4 rejected)
+{
+    if (!all(isfinite(pip_motion_control)) || !all(isfinite(pip_motion_limits)) ||
+        !(pip_motion_control.x == 1.0 || pip_motion_control.x == 2.0) ||
+        pip_motion_control.y < 0.5 || pip_motion_control.w <= 0.0 || pip_motion_control.w > 0.25 ||
+        any(abs(pip_previous_main.xy) < 0.00001)) return rejected;
+    if (pip_motion_control.x == 1.0 && (pip_motion_control.z < 0.0 || pip_motion_control.z > 1.0)) return rejected;
+
+    float2 main_uv = (uv - 0.5) * pip_current_main.xy + pip_current_main.zw;
+    float2 raster_uv = main_uv + pip_main_jitter.xy;
+    if (!pip_inside(raster_uv)) return rejected;
+    uint width, height;
+    s_pip_main_position.GetDimensions(width, height);
+    float2 dimensions = float2(width, height);
+    int2 last = int2(width - 1, height - 1);
+    int2 nearest = min(int2(raster_uv * dimensions), last);
+    float4 nearest_motion = s_pip_main_motion.Load(int3(nearest, 0));
+    // Never extend old world colour over a current actor or HUD pixel.
+    if (!all(isfinite(nearest_motion)) || nearest_motion.z > 0.5 ||
+        pip_motion_owner(nearest_motion.w) != 1.0) return rejected;
+
+    float3 origin = mul(pip_current_to_capture, float4(0, 0, 0, 1)).xyz;
+    float3 ray = mul(pip_current_to_capture,
+        float4(pip_view_point(main_uv, 1.0, pip_current_ray), 0.0)).xyz;
+    if (!all(isfinite(origin)) || !all(isfinite(ray)) || ray.z <= 0.00001) return rejected;
+    float2 captured_uv = ray.xy / ray.z * pip_capture_projection.xy + pip_capture_projection.zw;
+    float z = 0.0, current_z = 0.0;
+    [unroll] for (int step = 0; step < 3; ++step)
+    {
+        z = pip_capture_z(captured_uv);
+        if (!pip_valid_depth(z) || pip_capture_id(captured_uv) != 1.0) return rejected;
+        current_z = (z - origin.z) / ray.z;
+        float3 captured_point = origin + ray * current_z;
+        if (!pip_valid_depth(current_z)) return rejected;
+        captured_uv = captured_point.xy / captured_point.z * pip_capture_projection.xy + pip_capture_projection.zw;
+    }
+    if (!pip_same_depth(z, pip_capture_z(captured_uv)) || pip_capture_id(captured_uv) != 1.0) return rejected;
+
+    float2 grid = raster_uv * dimensions - 0.5;
+    int2 base = int2(floor(grid));
+    float2 fraction = frac(grid);
+    float support = 0.0;
+    float sky_coverage = 0.0;
+    float foliage_coverage = 0.0;
+    [unroll] for (int tap = 0; tap < 4; ++tap)
+    {
+        int2 pixel = clamp(base + pip_offsets[tap], int2(0, 0), last);
+        float main_z = s_pip_main_position.Load(int3(pixel, 0)).z;
+        float4 motion = s_pip_main_motion.Load(int3(pixel, 0));
+        float2 previous_main = main_uv - motion.xy;
+        float2 previous_lens = (previous_main - pip_previous_main.zw) / pip_previous_main.xy + 0.5;
+        if (pip_same_depth(main_z, current_z) && all(isfinite(motion)) &&
+            motion.z <= 0.5 && pip_motion_owner(motion.w) == 1.0 &&
+            all(abs(motion.xy) <= 1.0) && pip_inside(previous_main + pip_main_jitter.zw) && pip_inside(previous_lens))
+            support += pip_weight(fraction, tap);
+        // Subpixel branches can disappear entirely in the wide main camera.
+        // Empty sky cannot occlude persistent captured world geometry. A real
+        // foreground surface, actor, HUD or unknown history cannot use this.
+        if (isfinite(main_z) && main_z >= 0.0 && main_z <= 0.01 && all(isfinite(motion)) &&
+            motion.z <= 0.5 && pip_motion_owner(motion.w) == 1.0 &&
+            all(abs(motion.xy) <= 1.0) && pip_inside(previous_main + pip_main_jitter.zw) && pip_inside(previous_lens))
+            sky_coverage += pip_weight(fraction, tap);
+        // Wind can move a different leaf into the coarse main sample while the
+        // lens still uses the captured foliage pose. Resolve the whole pose.
+        if (pip_valid_depth(main_z) && all(isfinite(motion)) && motion.z <= 0.5 && motion.w == -1.0 &&
+            all(abs(motion.xy) <= 1.0) && pip_inside(previous_main + pip_main_jitter.zw) && pip_inside(previous_lens))
+            foliage_coverage += pip_weight(fraction, tap);
+    }
+    // Require material coverage, rather than borrowing a zero-weight neighbour.
+    if (support < 0.25 && support + sky_coverage < 0.9999 && foliage_coverage + sky_coverage < 0.9999) return rejected;
+    return float4(captured_uv, current_z, 1.0);
+}
+
+// Sky has no G-buffer depth. Preserve its captured colour behind the captured
+// foliage pose instead of magnifying the wide-camera silhouette in every gap.
+float4 pip_sky_coverage(float2 uv, float4 rejected)
+{
+    if (!all(isfinite(pip_motion_control)) ||
+        !(pip_motion_control.x == 1.0 || pip_motion_control.x == 2.0) ||
+        pip_motion_control.y < 0.5 || pip_motion_control.w <= 0.0 || pip_motion_control.w > 0.25 ||
+        (pip_motion_control.x == 1.0 && (pip_motion_control.z < 0.0 || pip_motion_control.z > 1.0))) return rejected;
+    float2 main_uv = (uv - 0.5) * pip_current_main.xy + pip_current_main.zw;
+    float2 raster_uv = main_uv + pip_main_jitter.xy;
+    if (!pip_inside(raster_uv)) return rejected;
+    float3 ray = mul(pip_current_to_capture,
+        float4(pip_view_point(main_uv, 1.0, pip_current_ray), 0.0)).xyz;
+    if (!all(isfinite(ray)) || ray.z <= 0.00001) return rejected;
+    float2 captured_uv = ray.xy / ray.z * pip_capture_projection.xy + pip_capture_projection.zw;
+    if (!pip_inside(captured_uv)) return rejected;
+    float captured_z = pip_capture_z(captured_uv);
+    float captured_owner = pip_capture_id(captured_uv);
+    bool captured_sky = isfinite(captured_z) && captured_z >= 0.0 && captured_z <= 0.01 && captured_owner == 0.0;
+    bool captured_dynamic = pip_valid_depth(captured_z) && captured_owner < 0.0 && pip_valid_owner(captured_owner);
+    if (!captured_sky && !captured_dynamic) return rejected;
+    uint width, height;
+    s_pip_main_position.GetDimensions(width, height);
+    float2 grid = raster_uv * float2(width, height) - 0.5;
+    int2 base = int2(floor(grid));
+    float2 fraction = frac(grid);
+    float support = 0.0;
+    float dynamic_support = 0.0;
+    bool nearest_is_sky = false;
+    float2 nearest_sky_uv = 0.0;
+    int2 nearest_offset = int2(fraction >= 0.5);
+    [unroll] for (int tap = 0; tap < 4; ++tap)
+    {
+        int2 pixel = clamp(base + pip_offsets[tap], int2(0, 0), int2(width - 1, height - 1));
+        float z = s_pip_main_position.Load(int3(pixel, 0)).z;
+        float4 motion = s_pip_main_motion.Load(int3(pixel, 0));
+        bool sky = isfinite(z) && z >= 0.0 && z <= 0.01 && pip_motion_owner(motion.w) == 1.0;
+        bool foliage = pip_valid_depth(z) && motion.w == -1.0;
+        bool reliable = all(isfinite(motion)) && motion.z <= 0.5;
+        if (reliable && (sky || foliage)) support += pip_weight(fraction, tap);
+        if (reliable && pip_valid_depth(z) && motion.w < 0.0 && pip_valid_owner(motion.w))
+            dynamic_support += pip_weight(fraction, tap);
+        if (all(pip_offsets[tap] == nearest_offset))
+        {
+            nearest_is_sky = reliable && sky;
+            nearest_sky_uv = (float2(pixel) + 0.5) / float2(width, height);
+        }
+    }
+    // Foreground reconstruction already tried every layer. A neighbouring bird
+    // must not turn an empty sky texel into a magnified main-camera blur halo.
+    // Keep rejecting actual foreground centres, HUD and unknown motion owners.
+    if (support < 0.9999 && (!nearest_is_sky || support + dynamic_support < 0.9999)) return rejected;
+    if (captured_sky) return float4(captured_uv, 9999.0, 1.0);
+    // The bird uncovered sky which was absent in the capture. Sample a proven
+    // current sky texel at its centre, without bilinear bleed from the bird.
+    // 10001 is a current-sky address, never a captured surface/history depth.
+    if (nearest_is_sky && dynamic_support > 0.0)
+        return float4(nearest_sky_uv, 10001.0, 1.0);
+    return rejected;
+}
+
+// Only silhouettes/depth boundaries need competing-layer reconstruction.
+bool pip_main_has_layers(float2 uv)
+{
+    uint width, height;
+    s_pip_main_position.GetDimensions(width, height);
+    float2 raster_uv = (uv - 0.5) * pip_current_main.xy + pip_current_main.zw + pip_main_jitter.xy;
+    if (!pip_inside(raster_uv)) return false;
+    int2 last = int2(width - 1, height - 1);
+    int2 base = int2(floor(raster_uv * float2(width, height) - 0.5));
+    int2 first = clamp(base, int2(0, 0), last);
+    float reference_z = s_pip_main_position.Load(int3(first, 0)).z;
+    float4 reference_motion = s_pip_main_motion.Load(int3(first, 0));
+    [unroll] for (int tap = 1; tap < 4; ++tap)
+    {
+        int2 pixel = clamp(base + pip_offsets[tap], int2(0, 0), last);
+        float z = s_pip_main_position.Load(int3(pixel, 0)).z;
+        float4 motion = s_pip_main_motion.Load(int3(pixel, 0));
+        if (!pip_same_depth(reference_z, z) ||
+            pip_motion_owner(reference_motion.w) != pip_motion_owner(motion.w) ||
+            reference_motion.z != motion.z) return true;
+    }
+    return false;
+}
+
+float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float4 result = pip_reconstruct(uv, -1);
+    if (pip_inside(result.xy) && !pip_main_has_layers(uv)) return result;
+    // One wide-camera pixel covers several magnified surface samples. Resolve
+    // the competing layers against captured geometry, not a nearest-owner mask.
+    float4 best = result;
+    [loop] for (int layer = 0; layer < 4; ++layer)
+    {
+        float4 candidate = pip_reconstruct(uv, layer);
+        if (pip_inside(candidate.xy) && (!pip_inside(best.xy) || candidate.z < best.z))
+            best = candidate;
+    }
+    if (pip_inside(best.xy)) return best;
+    result = pip_world_coverage(uv, result);
+    if (pip_inside(result.xy)) return result;
+    return pip_sky_coverage(uv, result);
+}

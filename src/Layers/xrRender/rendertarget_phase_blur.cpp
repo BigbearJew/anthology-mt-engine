@@ -246,6 +246,20 @@ void CRenderTarget::phase_ssfx_ssr()
 
 	//Set pass
 	RCache.set_Element(s_ssfx_ssr->E[0]);
+    Fmatrix effectToMain;
+    effectToMain.identity();
+    const bool reuseMainReflection = Device.m_SecondViewport.IsSVPFrame() &&
+        m_mainReflectionFrame != u32(-1) && Device.dwFrame - m_mainReflectionFrame <= 3 &&
+        Device.dwTimeGlobal - m_mainReflectionTime <= 250 && m_svpMainReflection && m_svpMainEffectPosition;
+    if (reuseMainReflection) effectToMain.mul(m_mainReflectionTransform, Device.mInvView);
+    RCache.set_c("pip_effect_to_main", effectToMain);
+    RCache.set_c("pip_effect_source", reuseMainReflection ? 1.f : 0.f, ScaleFactor, 0.f, 0.f);
+    if (!Device.m_SecondViewport.IsSVPFrame())
+    {
+        m_mainReflectionTransform.set(Device.mFullTransform);
+        m_mainReflectionFrame = Device.dwFrame;
+        m_mainReflectionTime = Device.dwTimeGlobal;
+    }
 	RCache.set_c("m_current", Matrix_current);
 	RCache.set_c("m_previous", Matrix_previous);
 	RCache.set_c("cam_pos", ::Random.randF(-1.0, 1.0), ::Random.randF(-1.0, 1.0), 0.0f, 0.0f);

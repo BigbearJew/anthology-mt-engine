@@ -7,6 +7,23 @@
 
 #include "blender_BmmD.h"
 
+static bool anthology_prepare_season_terrain_texture(LPCSTR season, LPCSTR base, string512& result)
+{
+	if (!season || !season[0] || !base || !base[0])
+	{
+		result[0] = 0;
+		return false;
+	}
+
+	strconcat(sizeof(result), result, "anthology_seasons\\", season, "\\", base);
+	string_path resolved;
+	if (FS.exist(resolved, "$game_textures$", result, ".dds"))
+		return true;
+
+	xr_strcpy(result, base);
+	return false;
+}
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -218,6 +235,56 @@ void CBlender_BmmD::Compile(CBlender_Compile& C)
 	C.SH->flags.isLandscape = FALSE;
 	string256 mask;
 	strconcat(sizeof(mask), mask, C.L_textures[0].c_str(), "_mask");
+
+	string512 deadR = {}, deadG = {}, deadB = {}, deadA = {};
+	string512 winterR = {}, winterG = {}, winterB = {}, winterA = {};
+	string512 bumpR = {}, bumpG = {}, bumpB = {}, bumpA = {};
+	string512 deadBumpR = {}, deadBumpG = {}, deadBumpB = {}, deadBumpA = {};
+	string512 winterBumpR = {}, winterBumpG = {}, winterBumpB = {}, winterBumpA = {};
+	const bool hasDeadR = anthology_prepare_season_terrain_texture("dead", oR_Name, deadR);
+	const bool hasDeadG = anthology_prepare_season_terrain_texture("dead", oG_Name, deadG);
+	const bool hasDeadB = anthology_prepare_season_terrain_texture("dead", oB_Name, deadB);
+	const bool hasDeadA = anthology_prepare_season_terrain_texture("dead", oA_Name, deadA);
+	const bool hasDeadTerrainDetails = hasDeadR || hasDeadG || hasDeadB || hasDeadA;
+	const bool hasWinterR = anthology_prepare_season_terrain_texture("winter", oR_Name, winterR);
+	const bool hasWinterG = anthology_prepare_season_terrain_texture("winter", oG_Name, winterG);
+	const bool hasWinterB = anthology_prepare_season_terrain_texture("winter", oB_Name, winterB);
+	const bool hasWinterA = anthology_prepare_season_terrain_texture("winter", oA_Name, winterA);
+	const bool hasWinterTerrainDetails = hasWinterR || hasWinterG || hasWinterB || hasWinterA;
+	if (!hasWinterR) xr_strcpy(winterR, deadR);
+	if (!hasWinterG) xr_strcpy(winterG, deadG);
+	if (!hasWinterB) xr_strcpy(winterB, deadB);
+	if (!hasWinterA) xr_strcpy(winterA, deadA);
+
+	strconcat(sizeof(bumpR), bumpR, oR_Name, "_bump");
+	strconcat(sizeof(bumpG), bumpG, oG_Name, "_bump");
+	strconcat(sizeof(bumpB), bumpB, oB_Name, "_bump");
+	strconcat(sizeof(bumpA), bumpA, oA_Name, "_bump");
+	anthology_prepare_season_terrain_texture("dead", bumpR, deadBumpR);
+	anthology_prepare_season_terrain_texture("dead", bumpG, deadBumpG);
+	anthology_prepare_season_terrain_texture("dead", bumpB, deadBumpB);
+	anthology_prepare_season_terrain_texture("dead", bumpA, deadBumpA);
+	if (!anthology_prepare_season_terrain_texture("winter", bumpR, winterBumpR)) xr_strcpy(winterBumpR, deadBumpR);
+	if (!anthology_prepare_season_terrain_texture("winter", bumpG, winterBumpG)) xr_strcpy(winterBumpG, deadBumpG);
+	if (!anthology_prepare_season_terrain_texture("winter", bumpB, winterBumpB)) xr_strcpy(winterBumpB, deadBumpB);
+	if (!anthology_prepare_season_terrain_texture("winter", bumpA, winterBumpA)) xr_strcpy(winterBumpA, deadBumpA);
+
+	string512 requestedLod = {}, lodTexture = {}, deadLodTexture = {}, winterLodTexture = {};
+	strconcat(sizeof(requestedLod), requestedLod, C.L_textures[0].c_str(), "_lod_textures");
+	const bool hasDeadLod = anthology_prepare_season_terrain_texture("dead", requestedLod, deadLodTexture);
+	const bool hasWinterLod = anthology_prepare_season_terrain_texture("winter", requestedLod, winterLodTexture);
+	string_path resolvedLod;
+	if (FS.exist(resolvedLod, "$game_textures$", requestedLod, ".dds"))
+		xr_strcpy(lodTexture, requestedLod);
+	else
+		xr_strcpy(lodTexture, "terrain\\default_lod_textures");
+	if (!hasDeadLod)
+		xr_strcpy(deadLodTexture, lodTexture);
+	if (!hasWinterLod)
+		xr_strcpy(winterLodTexture, deadLodTexture);
+	const bool hasSeasonalTerrain = hasDeadTerrainDetails || hasWinterTerrainDetails || hasDeadLod || hasWinterLod;
+	const bool hasSeasonalLod = hasDeadLod || hasWinterLod;
+
 	bool z_prepass = ps_r2_ls_flags.test(R2FLAG_TERRAIN_PREPASS);
 	switch (C.iElement)
 	{
@@ -231,7 +298,7 @@ void CBlender_BmmD::Compile(CBlender_Compile& C)
 		}
 
 #if RENDER == R_R4
-		if (RImplementation.o.ssfx_terrain)
+		if (RImplementation.o.ssfx_terrain && !hasSeasonalTerrain)
 		{
 			C.SH->flags.isLandscape = TRUE;
 			uber_deffer(C, true, "terrain", "terrain_high", false, oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
@@ -239,7 +306,8 @@ void CBlender_BmmD::Compile(CBlender_Compile& C)
 		else
 #endif
 		{
-			uber_deffer(C, true, "impl", "impl", false, oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
+			uber_deffer(C, true, "impl", hasSeasonalTerrain ? "anthology_terrain_high" : "impl", false,
+				oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
 		}
 
 		if (z_prepass) C.RS.SetRS(D3DRS_ZFUNC, D3DCMP_EQUAL);
@@ -268,6 +336,28 @@ void CBlender_BmmD::Compile(CBlender_Compile& C)
 		C.r_dx10Texture("s_dn_g", strconcat(sizeof(mask), mask, oG_Name, "_bump"));
 		C.r_dx10Texture("s_dn_b", strconcat(sizeof(mask), mask, oB_Name, "_bump"));
 		C.r_dx10Texture("s_dn_a", strconcat(sizeof(mask), mask, oA_Name, "_bump"));
+
+		if (hasSeasonalTerrain)
+		{
+			C.r_dx10Texture("s_dt_r_dead", deadR);
+			C.r_dx10Texture("s_dt_g_dead", deadG);
+			C.r_dx10Texture("s_dt_b_dead", deadB);
+			C.r_dx10Texture("s_dt_a_dead", deadA);
+			C.r_dx10Texture("s_dn_r_dead", deadBumpR);
+			C.r_dx10Texture("s_dn_g_dead", deadBumpG);
+			C.r_dx10Texture("s_dn_b_dead", deadBumpB);
+			C.r_dx10Texture("s_dn_a_dead", deadBumpA);
+			C.r_dx10Texture("s_lod_texture_dead", deadLodTexture);
+			C.r_dx10Texture("s_dt_r_winter", winterR);
+			C.r_dx10Texture("s_dt_g_winter", winterG);
+			C.r_dx10Texture("s_dt_b_winter", winterB);
+			C.r_dx10Texture("s_dt_a_winter", winterA);
+			C.r_dx10Texture("s_dn_r_winter", winterBumpR);
+			C.r_dx10Texture("s_dn_g_winter", winterBumpG);
+			C.r_dx10Texture("s_dn_b_winter", winterBumpB);
+			C.r_dx10Texture("s_dn_a_winter", winterBumpA);
+			C.r_dx10Texture("s_lod_texture_winter", winterLodTexture);
+		}
 
 #if RENDER == R_R4
 		if (RImplementation.o.ssfx_terrain)
@@ -305,13 +395,15 @@ void CBlender_BmmD::Compile(CBlender_Compile& C)
 		if (RImplementation.o.ssfx_terrain)
 		{
 			C.SH->flags.isLandscape = TRUE;
-			uber_deffer(C, false, "base", "terrain_mid", false, oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
+			uber_deffer(C, false, "base", hasSeasonalLod ? "anthology_terrain_mid" : "terrain_mid", false,
+				oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
 		}
 		else
 #endif
 		{
 			// Vanilla
-			uber_deffer(C, false, "base", "impl", false, oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
+			uber_deffer(C, false, "base", hasSeasonalLod ? "anthology_terrain_mid" : "impl", false,
+				oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
 		}
 
 		if (z_prepass) C.RS.SetRS(D3DRS_ZFUNC, D3DCMP_EQUAL);
@@ -324,17 +416,13 @@ void CBlender_BmmD::Compile(CBlender_Compile& C)
 		C.r_dx10Texture("s_mask", mask);
 
 #if RENDER == R_R4
-		if (RImplementation.o.ssfx_terrain)
+		if (RImplementation.o.ssfx_terrain || hasSeasonalLod)
 		{
-			LPSTR LodTexture = strconcat(sizeof(mask), mask, C.L_textures[0].c_str(), "_lod_textures");
-			string_path fn;
-			if (FS.exist(fn, "$game_textures$", LodTexture, ".dds"))
+			C.r_dx10Texture("s_lod_texture", lodTexture);
+			if (hasSeasonalLod)
 			{
-				C.r_dx10Texture("s_lod_texture", LodTexture);
-			}
-			else
-			{
-				C.r_dx10Texture("s_lod_texture", "terrain\\default_lod_textures");
+				C.r_dx10Texture("s_lod_texture_dead", deadLodTexture);
+				C.r_dx10Texture("s_lod_texture_winter", winterLodTexture);
 			}
 		}
 #endif
@@ -362,8 +450,17 @@ void CBlender_BmmD::Compile(CBlender_Compile& C)
 
 		C.SH->flags.isLandscape = TRUE;
 
-		uber_deffer(C, false, "base", "terrain_low", false, oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
+		uber_deffer(C, false, "base", hasSeasonalLod ? "anthology_terrain_low" : "terrain_low", false,
+			oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
 		if (z_prepass) C.RS.SetRS(D3DRS_ZFUNC, D3DCMP_EQUAL);
+
+		if (hasSeasonalLod)
+		{
+			C.r_dx10Texture("s_mask", mask);
+			C.r_dx10Texture("s_lod_texture", lodTexture);
+			C.r_dx10Texture("s_lod_texture_dead", deadLodTexture);
+			C.r_dx10Texture("s_lod_texture_winter", winterLodTexture);
+		}
 
 		C.r_dx10Sampler("smp_linear");
 

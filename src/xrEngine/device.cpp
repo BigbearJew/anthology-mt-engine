@@ -19,6 +19,7 @@
 #include "x_ray.h"
 #include "discord\discord.h"
 #include "render.h"
+#include "irenderable.h"
 #include <chrono>
 
 // must be defined before include of FS_impl.h
@@ -35,9 +36,11 @@
 
 #include "CustomHUD.h"
 #include "EngineThreading.h"
+#include "CameraManager.h"
 #include "IGame_Level.h"
 
 #include "Rain.h"
+#include "../Layers/xrRender/xrRender_console.h"
 
 #pragma comment( lib, "d3dx9.lib" )
 
@@ -47,6 +50,10 @@ ENGINE_API CRenderDevice* DevicePtr = nullptr;
 
 namespace
 {
+// A hidden temporal capture reuses the last completed simulation pose. It must
+// not consume timer time or run a second input/physics/Lua/particle update.
+bool svp_render_only_frame = false;
+
 struct SPrecacheFrameCallbackProfile
 {
 	const void* object = nullptr;
@@ -264,6 +271,11 @@ void ProcessRuntimeFrameCallbacks()
 		PrintAndResetRuntimeFrameCallbackProfiles();
 }
 } // namespace
+
+bool CRenderDeviceData::IsSVPRenderOnlyFrame() const
+{
+    return svp_render_only_frame;
+}
 
 ENGINE_API xr_atomic_bool g_bRendering = false;
 extern ENGINE_API float psHUD_FOV;
@@ -633,12 +645,13 @@ void CRenderDevice::on_idle()
 	u64 end_ticks = 0;
 	u64 mt_seq_render_ticks = 0;
 
-    if (g_pGamePersistent != nullptr)
+    if (!svp_render_only_frame && g_pGamePersistent != nullptr)
     {
         PROF_EVENT("Update Particles");
         g_pGamePersistent->UpdateParticles();
     }
-    secondary_tasks.run(&XRay::Engine::PreRenderThread);
+    if (!svp_render_only_frame)
+        secondary_tasks.run(&XRay::Engine::PreRenderThread);
 
 	// Precache
 	if (dwPrecacheFrame)
@@ -654,14 +667,14 @@ void CRenderDevice::on_idle()
 		mView.build_camera_dir(vCameraPosition, vCameraDirection, vCameraTop);
 	}
 
+	const bool svp_frame = m_SecondViewport.IsSVPFrame();
+
 	// Matrices
 	START_PROFILE("Matrices");
 	mFullTransform.mul(mProject, mView);
 	mFullTransformHud.mul(mProjectHud, mView);
 	mFullTransformCam.mul(mProjectCam, mView);
 	m_pRender->SetCacheXform(mView, mProject);
-
-	const bool svp_frame = m_SecondViewport.IsSVPFrame();
 
 	// Keep previous camera transforms per viewport. SecondVP alternates with the
 	// main view, so sharing one previous transform makes its TAA reproject across
@@ -807,14 +820,18 @@ void CRenderDevice::on_idle()
 	if (prepare_world_render)
 	{
 		secondary_tasks.run(&XRay::Engine::PreRenderPostTransformsThread);
-		if (mt_calc_bones)
-			secondary_tasks.run(&XRay::Engine::CalculateBonesThread);
-		else
-			XRay::Engine::CalculateBonesThread();
+		if (!svp_render_only_frame)
+		{
+			if (mt_calc_bones)
+				secondary_tasks.run(&XRay::Engine::CalculateBonesThread);
+			else
+				XRay::Engine::CalculateBonesThread();
+		}
 	}
 
 	Device.isRendering = true;
-	secondary_tasks.run(&XRay::Engine::GameThread);
+	if (!svp_render_only_frame)
+		secondary_tasks.run(&XRay::Engine::GameThread);
 	
 #ifdef ECO_RENDER // ECO_RENDER START
 	{
@@ -839,7 +856,9 @@ void CRenderDevice::on_idle()
 			target_seconds = refresh_rate;
 		}
 
-		if (target_seconds > 0.f)
+		// A lens capture is not presented. Rate-limit only main frames, otherwise
+		// a 60 FPS limit becomes 30 displayed FPS at the native PiP cadence.
+		if (target_seconds > 0.f && !svp_frame)
 		{
 			const auto now = limiter_clock::now();
 			if (!limiter_armed)
@@ -870,7 +889,7 @@ void CRenderDevice::on_idle()
 				previous_frame = current - target > frame_period ? current : target;
 			}
 		}
-		else
+		else if (target_seconds <= 0.f)
 		{
 			limiter_armed = false;
 		}
@@ -883,6 +902,11 @@ void CRenderDevice::on_idle()
 
 	if (b_is_Active && Begin())
 	{
+		if (!svp_frame)
+		{
+			++mMainRenderSerial;
+			SetRenderSurfaceOwnerMainSerial(mMainRenderSerial);
+		}
 		START_PROFILE("Process seqRender");
 		const bool measure_seq_render = measure_precache_frame || measure_mt_frame;
 		const u64 seq_render_started_at = measure_seq_render ? CPU::QPC() : 0;
@@ -939,12 +963,44 @@ void CRenderDevice::on_idle()
 			u64 max_frame_move = 0;
 			u64 max_seq_render = 0;
 			u64 max_secondary_wait = 0;
+			u32 pip_captures = 0;
+			u32 pip_render_only_captures = 0;
+			u32 pip_main_frames = 0;
+			u64 pip_capture_render = 0;
+			u64 pip_main_render = 0;
+			u32 pip_ready_main_frames = 0;
+			u32 pip_reprojected_main_frames = 0;
+			u64 pip_age_ms = 0;
+			u32 pip_max_age_ms = 0;
 			SFrameTaskProfile tasks;
 		};
 		static SFrameProfileAccumulator profile;
 		const u64 total_ticks = frame_finished_at - mt_frame_started_at;
 		const u64 wait_ticks = frame_finished_at - secondary_wait_started_at;
 		++profile.frames;
+		if (m_SecondViewport.IsSVPActive())
+		{
+			if (svp_frame)
+			{
+				++profile.pip_captures;
+				profile.pip_render_only_captures += svp_render_only_frame ? 1 : 0;
+				profile.pip_capture_render += mt_seq_render_ticks;
+			}
+			else
+			{
+				++profile.pip_main_frames;
+				profile.pip_main_render += mt_seq_render_ticks;
+				if (m_SecondViewport.IsSVPTextureReady())
+				{
+					const u32 age = dwTimeGlobal - m_SecondViewport.GetSVPCaptureTime();
+					++profile.pip_ready_main_frames;
+					profile.pip_age_ms += age;
+					profile.pip_max_age_ms = std::max(profile.pip_max_age_ms, age);
+					if (ps_scope_lense_temporal_mode != 0)
+						++profile.pip_reprojected_main_frames;
+				}
+			}
+		}
 		profile.total += total_ticks;
 		profile.frame_move += mt_frame_move_ticks;
 		profile.seq_render += mt_seq_render_ticks;
@@ -986,6 +1042,14 @@ void CRenderDevice::on_idle()
 			const double ticks_to_average_ms = 1000.0 /
 				(double(CPU::qpc_freq) * double(profile.frames));
 			const double ticks_to_ms = 1000.0 / double(CPU::qpc_freq);
+			if (profile.pip_captures || profile.pip_main_frames)
+				Msg("* [pip-frame/profile] captures=%u main-frames=%u render-cpu(capture/main)=%.2f/%.2f ms mode=%d interval=%d refresh=frame-count reprojected-main=%u sample-age(avg/max)=%.2f/%u ms render-only=%u",
+					profile.pip_captures, profile.pip_main_frames,
+					profile.pip_capture_render * ticks_to_ms / _max(1u, profile.pip_captures),
+					profile.pip_main_render * ticks_to_ms / _max(1u, profile.pip_main_frames),
+					ps_scope_lense_temporal_mode, ps_scope_lense_update_interval, profile.pip_reprojected_main_frames,
+					double(profile.pip_age_ms) / _max(1u, profile.pip_ready_main_frames), profile.pip_max_age_ms,
+					profile.pip_render_only_captures);
 			Msg("* [mt-frame/profile] frames=%u avg(total/frame/render/wait)=%.2f/%.2f/%.2f/%.2f ms "
 				"workers(pre/post/bones/game/lua-gc/vision)=%.2f/%.2f/%.2f/%.2f/%.2f/%.2f ms "
 				"max(total/frame/render/wait)=%.2f/%.2f/%.2f/%.2f ms",
@@ -1161,6 +1225,38 @@ void CRenderDevice::FrameMove()
 	dwFrame++;
 	Core.dwFrame = dwFrame;
 	dwTimeContinual = TimerMM.GetElapsed_ms() - app_inactive_time;
+	svp_render_only_frame = false;
+	static const bool legacy_pip_tick = strstr(Core.Params, "-pip_legacy_tick") != nullptr;
+	// Decide before consuming the simulation timer: the next main update must
+	// include the capture's elapsed wall time. dwFrame still advances for caches.
+	const bool capture_frame = m_SecondViewport.IsSVPFrame();
+	if (capture_frame && !legacy_pip_tick && ps_scope_lense_temporal_mode != 0 &&
+		!dwPrecacheFrame && !Paused() && !psDeviceFlags.test(rsConstantFPS) && b_is_Active &&
+		g_bLoaded && mMainHudCamSaved && g_loading_events.empty() &&
+		g_pGameLevel && g_pGameLevel->bReady && g_pGamePersistent &&
+		g_pGamePersistent->m_pGShaderConstants)
+	{
+		const float lens_fov = g_pGamePersistent->m_pGShaderConstants->hud_params.y;
+		if (_valid(lens_fov) && lens_fov >= 1.f && lens_fov <= 170.f &&
+			_valid(fASPECT) && fASPECT > 0.f)
+		{
+			mView.set(mView_saved);
+			mInvView.invert(mView);
+			vCameraPosition.set(vCameraPosition_saved);
+			mProject.set(mProject_saved);
+			fFOV = lens_fov;
+			const float cotangent = 1.f / tanf(deg2rad(fFOV) * 0.5f);
+			// Retain the main camera's near/far planes and projection center.
+			mProject._11 = fASPECT * cotangent;
+			mProject._22 = cotangent;
+			mInvProject.invert(mProject);
+			g_pGamePersistent->m_pGShaderConstants->hud_params.w = 1.f;
+			m_SecondViewport.isCamReady = true;
+			CCameraManager::ResetPP();
+			svp_render_only_frame = true;
+			return;
+		}
+	}
 	if (psDeviceFlags.test(rsConstantFPS))
 	{
 		PROF_EVENT("Constant FPS");
@@ -1198,6 +1294,9 @@ void CRenderDevice::FrameMove()
 		dwTimeGlobal = TimerGlobal.GetElapsed_ms();
 		dwTimeDelta = dwTimeGlobal - _old_global;
 	}
+
+	// Latch the viewport once before callbacks or render workers query it.
+	m_SecondViewport.IsSVPFrame();
 
 	// Frame move
 	Statistic->EngineTOTAL.Begin();
@@ -1423,10 +1522,7 @@ void CLoadScreenRenderer::OnRender()
 void CRenderDevice::CSecondVPParams::SetSVPActive(bool bState) //--#SM+#-- +SecondVP+
 {
 	if (isActive != bState)
-	{
-		isTextureReady = false;
-		isCamReady = false;
-	}
+		InvalidateSVPContent();
 	if (!bState)
 	{
 		isThermal = false;
@@ -1445,9 +1541,55 @@ void CRenderDevice::CSecondVPParams::InvalidateSVPContent()
 {
 	isTextureReady = false;
 	isCamReady = false;
+	capturedTime = 0;
+	capturedFrame = u32(-1);
+	temporalSchedule.Reset();
+}
+
+void CRenderDevice::CSecondVPParams::MarkSVPTextureReady()
+{
+	isTextureReady = isActive && isCamReady;
+	if (!isTextureReady)
+	{
+		capturedFrame = u32(-1);
+		capturedTime = 0;
+		return;
+	}
+	capturedPosition = Device.vCameraPosition;
+	capturedDirection = Device.vCameraDirection;
+	capturedTop = Device.vCameraTop;
+	// Publish transforms only together with the successfully copied lens image.
+	capturedView = Device.mView;
+	capturedProjection = Device.mProject;
+	capturedFov = Device.fFOV;
+	capturedNvg = ps_scope_lense_head_nvg_active;
+	capturedQuality = ps_scope_lense_quality_percent;
+	capturedTime = Device.dwTimeGlobal;
+	capturedFrame = Device.dwFrame;
+	SetRenderSurfaceOwnerHistoryBoundary(Device.mMainRenderSerial);
+	temporalSchedule.Captured(Device.dwFrame, Device.dwTimeGlobal);
 }
 
 bool CRenderDevice::CSecondVPParams::IsSVPFrame() //--#SM+#-- +SecondVP+
 {
-	return IsSVPActive() && Device.dwFrame % frameDelay == 0;
+	bool cachedDecision;
+	if (temporalSchedule.Cached(Device.dwFrame, cachedDecision))
+		return cachedDecision;
+
+	float requestedFov = capturedFov;
+	if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
+		requestedFov = g_pGamePersistent->m_pGShaderConstants->hud_params.y;
+	// Normal view motion is handled by the lens camera transform. Only a large
+	// move/turn that loses capture coverage may override the selected interval.
+	const float angularLimit = deg2rad(clampr(capturedFov * 0.25f, 0.5f, 30.f));
+	const bool cameraChanged = isTextureReady &&
+		(capturedPosition.distance_to_sqr(Device.vCameraPosition) > 1.0f ||
+		 capturedDirection.dotproduct(Device.vCameraDirection) < _cos(angularLimit) ||
+		 capturedTop.dotproduct(Device.vCameraTop) < _cos(angularLimit) ||
+		 _abs(requestedFov - capturedFov) > _max(0.02f, capturedFov * 0.005f) ||
+		 capturedNvg != ps_scope_lense_head_nvg_active ||
+		 capturedQuality != ps_scope_lense_quality_percent);
+	return temporalSchedule.Select(Device.dwFrame, Device.dwTimeGlobal,
+		isActive && !Device.dwPrecacheFrame && !IsMainMenuActive(), isTextureReady,
+		ps_scope_lense_update_interval, cameraChanged, ps_scope_lense_temporal_mode == 0 ? frameDelay : 0);
 }

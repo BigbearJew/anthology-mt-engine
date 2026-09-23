@@ -37,6 +37,11 @@ public:
 	shared_str fname;
 	cache_cat CAT;
 
+    // Non-owning links: sources live in the sound core cache until shutdown.
+    CSoundRender_Source* anthology_original = nullptr;
+    CSoundRender_Source* anthology_winter = nullptr;
+    bool anthology_winter_checked = false;
+
 	float fTimeTotal;
 	u32 dwBytesTotal;
 

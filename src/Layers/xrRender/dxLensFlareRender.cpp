@@ -139,6 +139,14 @@ void dxLensFlareRender::Render(CLensFlare& owner, BOOL bSun, BOOL bFlares, BOOL 
 		{
 			u32 vBase = i * 4 + VS_Offset;
 			RCache.set_Shader(_2render[i]);
+#if defined(USE_DX11)
+            // Main-camera occlusion cannot describe the magnified lens image.
+            // Its own sun and final bloom are already present in the scope.
+            const bool maskLens = !bSun && !Device.m_SecondViewport.IsSVPFrame() &&
+                Device.m_SecondViewport.IsSVPActive() && Device.m_SecondViewport.IsSVPTextureReady();
+            RCache.set_c("pip_flare_mask", maskLens ? 1.f : 0.f,
+                1.f / float(Device.dwWidth), 1.f / float(Device.dwHeight), 0.f);
+#endif
 			RCache.Render(D3DPT_TRIANGLELIST, vBase, 0, 4, 0, 2);
 		}
 	}

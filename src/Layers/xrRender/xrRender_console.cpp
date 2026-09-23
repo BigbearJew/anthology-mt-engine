@@ -5,6 +5,7 @@
 #include	"dxRenderDeviceRender.h"
 
 #include "../../build_config_defines.h"
+#include "../../xrCore/RuntimeSeason.h"
 
 u32 ps_Preset = 2;
 xr_token qpreset_token [ ] = {
@@ -117,6 +118,7 @@ xr_token screenshot_mode_token [ ] = {
 // Common
 extern int psSkeletonUpdate;
 extern float r__dtex_range;
+int ps_r__FloraStyle = 1;
 
 // The per-visual dynamic HOM path is intentionally opt-in. It can reduce the
 // number of submitted packets in dense interiors, but it repeats a CPU-side
@@ -337,6 +339,17 @@ int ps_scope_lense_allow_thermal = 1;
 int ps_scope_lense_head_nvg_active = 0;
 int ps_scope_lense_head_thermal_active = 0;
 int ps_scope_lense_ads_is_pip = 0;
+int ps_scope_lense_temporal_mode = 1;
+int ps_scope_lense_update_interval = 2;
+float ps_scope_lense_brightness = 1.f;
+float ps_scope_lense_contrast = 1.f;
+float ps_scope_lense_saturation = 1.f;
+float ps_scope_lense_gamma = 1.f;
+float ps_scope_lense_sharpness = 1.f;
+float ps_scope_lense_grain = 0.f;
+float ps_scope_lense_dirt = 0.65f;
+int ps_scope_lense_tint = 0;
+float ps_scope_lense_tint_intensity = 0.3f;
 int ps_scope_lense_frame_delay_add_compat = 0; // legacy no-op, kept for old user.ltx/MCM values
 //string32 scope_fake_texture = "wpn\\wpn_crosshair_pso1";
 
@@ -626,6 +639,17 @@ float r_rain_k = 99.0f;
 #if defined(USE_DX10) || defined(USE_DX11)
 #include "../xrRenderDX10/StateManager/dx10SamplerStateCache.h"
 #endif	//	USE_DX10
+
+class CCC_FloraStyle : public CCC_Integer
+{
+public:
+	CCC_FloraStyle(LPCSTR name, int* value, int min, int max) : CCC_Integer(name, value, min, max) {}
+	void Execute(LPCSTR args) override
+	{
+		CCC_Integer::Execute(args);
+		anthology::set_runtime_season(ps_r__FloraStyle);
+	}
+};
 
 class CCC_ssfx_cascades : public CCC_Vector3
 {
@@ -1164,6 +1188,7 @@ void xrRender_initconsole()
 	CMD1(CCC_DumpResources,		"dump_resources");
 
 	CMD4(CCC_Float, "r__dtex_range", &r__dtex_range, 5, 175);
+	CMD4(CCC_FloraStyle, "r__flora_style", &ps_r__FloraStyle, 1, 6);
 
 	// Common
 	CMD1(CCC_Screenshot, "screenshot");
@@ -1413,6 +1438,17 @@ void xrRender_initconsole()
 	CMD4(CCC_Integer, "scope_lense_head_nvg_active", &ps_scope_lense_head_nvg_active, 0, 1);
 	CMD4(CCC_Integer, "scope_lense_head_thermal_active", &ps_scope_lense_head_thermal_active, 0, 1);
 	CMD4(CCC_Integer, "scope_lense_ads_is_pip", &ps_scope_lense_ads_is_pip, 0, 1);
+	CMD4(CCC_Integer, "scope_lense_temporal_mode", &ps_scope_lense_temporal_mode, 0, 1);
+	CMD4(CCC_Integer, "scope_lense_update_interval", &ps_scope_lense_update_interval, 1, 8);
+	CMD4(CCC_Float, "scope_lense_brightness", &ps_scope_lense_brightness, 0.5f, 1.5f);
+	CMD4(CCC_Float, "scope_lense_contrast", &ps_scope_lense_contrast, 0.5f, 1.5f);
+	CMD4(CCC_Float, "scope_lense_saturation", &ps_scope_lense_saturation, 0.f, 2.f);
+	CMD4(CCC_Float, "scope_lense_gamma", &ps_scope_lense_gamma, 0.5f, 1.5f);
+	CMD4(CCC_Float, "scope_lense_sharpness", &ps_scope_lense_sharpness, 0.f, 2.f);
+	CMD4(CCC_Float, "scope_lense_grain", &ps_scope_lense_grain, 0.f, 1.f);
+	CMD4(CCC_Float, "scope_lense_dirt", &ps_scope_lense_dirt, 0.f, 2.f);
+	CMD4(CCC_Integer, "scope_lense_tint", &ps_scope_lense_tint, 0, 4);
+	CMD4(CCC_Float, "scope_lense_tint_intensity", &ps_scope_lense_tint_intensity, 0.f, 1.f);
 
 	CMD4(CCC_Integer, "r__heatvision", &ps_r2_heatvision, 0, 1); //--DSR-- HeatVision
 	CMD3(CCC_Mask, "r2_terrain_z_prepass", &ps_r2_ls_flags, R2FLAG_TERRAIN_PREPASS); //Terrain Z Prepass @Zagolski

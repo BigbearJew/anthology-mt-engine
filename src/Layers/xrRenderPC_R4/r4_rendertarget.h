@@ -28,6 +28,14 @@ private:
 	xr_vector<SvpRtPair> m_svpRtBank;
 	ref_rt m_svpDepth;
 	bool m_svpRtBankActive = false;
+	bool m_svpEffectHistoryActive = false;
+    ref_texture m_svpMainReflection, m_svpMainEffectPosition;
+    Fmatrix m_mainReflectionTransform;
+    u32 m_mainReflectionFrame = u32(-1);
+    u32 m_mainReflectionTime = 0;
+
+	ref_rt m_svpSssHistory, m_svpSsrHistory;
+	void swap_svp_effect_history();
 	u32 m_svpRtBankWidth = 0;
 	u32 m_svpRtBankHeight = 0;
 	u32 m_svpSavedRenderWidth = 0;
@@ -35,7 +43,6 @@ private:
 	void create_svp_rt_bank(u32 width, u32 height);
 	void add_svp_rt(ref_rt& target, LPCSTR suffix, u32 width, u32 height);
 	void swap_svp_rt_bank();
-	void unbind_svp_resources();
 	u32 dwAccumulatorClearMark;
 public:
 	enum eStencilOptimizeMode
@@ -153,6 +160,28 @@ public:
 
 	ref_rt rt_secondVP;	// 32bit		(r,g,b,a) --//#SM+#-- +SecondVP+
 	ref_rt rt_secondVP_capture;
+	ref_rt rt_secondVP_scene;
+	u32 m_svpSceneFrame = u32(-1);
+	ref_rt rt_svpMotionDepth;
+	ref_rt rt_svpMotionOwner;
+	ref_rt rt_svpMotionMap[2];
+	ref_texture t_svpMotionPrevious;
+	ref_texture t_svpMotionCurrent;
+	u32 m_svpMotionIndex = 0;
+	u32 m_svpMotionDepthFrame = u32(-1);
+	u32 m_svpMotionCaptureFrame = u32(-1);
+	u32 m_svpMotionOutputFrame = u32(-1);
+	u32 m_svpMotionTime = 0;
+	u64 m_svpMotionSerial = 0;
+	u64 m_svpMotionOwnerGeneration = 0;
+	u64 m_svpMotionDepthOwnerGeneration = 0;
+	bool m_svpMotionOwnerSupport = false;
+	bool m_svpMotionHistory = false;
+	bool m_svpMotionSeeded = false;
+	Fmatrix m_svpMotionView;
+	Fmatrix m_svpMotionProjection;
+	Fvector4 m_svpMotionCrop;
+	Fvector2 m_svpMotionJitter;
 
 
 	ref_rt rt_fakescope;	// crookr fakescope
@@ -461,6 +490,14 @@ public:
 	void phase_nightvision();
 	void phase_fakescope(); //crookr
 	void phase_svp_quality(ID3D11Texture2D* source);
+	void unbind_svp_resources();
+	bool svp_scene_capture_required() const;
+	void phase_svp_scene();
+	void draw_svp_scene(const ref_rt& target, int element = 5);
+	bool svp_motion_supported() const;
+	bool ensure_svp_motion_targets(u32 width, u32 height);
+	void phase_svp_motion();
+	bool svp_motion_ready() const { return m_svpMotionOutputFrame == Device.dwFrame; }
 	void phase_heatvision(); //--DSR-- HeatVision
 	void phase_3DSSReticle(); // Redotix99: for 3D Shader Based Scopes
 	void phase_lut();

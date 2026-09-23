@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "../../xrEngine/RenderHistoryEpoch.h"
 #pragma hdrstop
 
 #include "../../xrEngine/igame_persistent.h"
@@ -127,7 +128,10 @@ struct FTreeVisual_setup
 
 	FTreeVisual_setup()
 	{
-		dwFrame = 0;
+		dwFrame = u32(-1);
+		scale = 0.f;
+		wave.set(0.f, 0.f, 0.f, 0.f);
+		wind.set(0.f, 0.f, 0.f, 0.f);
 	}
 
 	void calculate()
@@ -162,14 +166,25 @@ struct FTreeVisual_setup
 void FTreeVisual::Render(float LOD)
 {
 	PROF_EVENT("FTreeVisual::Render");
-	static FTreeVisual_setup tvs, prev_tvs;
-	// Keep previous/current wind animation on the main-view cadence. The sparse
-	// SVP pass uses SMAA and must not consume the main temporal step.
-	if (!Device.m_SecondViewport.IsSVPFrame() && tvs.dwFrame != Device.dwFrame)
+	static FTreeVisual_setup main_tvs, prev_tvs, capture_tvs;
+	static RenderHistoryEpoch windHistoryEpoch;
+	const bool svp_frame = Device.m_SecondViewport.IsSVPFrame();
+	if (svp_frame)
 	{
-		prev_tvs = tvs; // Save previous frame calculations
-		tvs.calculate();
+		// Render the actual capture-time wind without advancing main history.
+		if (capture_tvs.dwFrame != Device.dwFrame)
+			capture_tvs.calculate();
 	}
+	else if (main_tvs.dwFrame != Device.dwFrame)
+	{
+		const auto historyStep = windHistoryEpoch.Begin(Device.mMainRenderSerial);
+		prev_tvs = main_tvs;
+		main_tvs.calculate();
+		if (historyStep == RenderHistoryEpoch::Step::Reset)
+			prev_tvs = main_tvs;
+	}
+	FTreeVisual_setup& tvs = svp_frame ? capture_tvs : main_tvs;
+	const FTreeVisual_setup& previous = svp_frame ? capture_tvs : prev_tvs;
 	// setup constants
 #if RENDER!=R_R1
 	Fmatrix xform_v;
@@ -182,8 +197,8 @@ void FTreeVisual::Render(float LOD)
 	RCache.tree.set_wave(tvs.wave); // wave
 	RCache.tree.set_wind(tvs.wind); // wind
 
-	RCache.set_c(c_prev_wave, prev_tvs.wave);
-	RCache.set_c(c_prev_wind, prev_tvs.wind);
+	RCache.set_c(c_prev_wave, previous.wave);
+	RCache.set_c(c_prev_wind, previous.wind);
 
 #if RENDER!=R_R1
 	s *= 1.3333f;

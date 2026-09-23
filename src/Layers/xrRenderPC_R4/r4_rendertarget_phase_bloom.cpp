@@ -68,10 +68,11 @@ void CalcGauss_wave(
 void CRenderTarget::phase_bloom()
 {
 	PIX_EVENT(phase_bloom);
-	// PiP frames do not sample or advance the main luminance history. Accumulate
-	// their elapsed time so adaptation speed remains tied to real time rather
-	// than slowing down with the viewport cadence.
-	f_main_view_adaptation_delta += Device.fTimeDelta;
+	// A render-only capture reuses the previous simulation delta. The next
+	// main frame already includes its elapsed time; counting it here twice
+	// makes exposure depend on the PiP capture cadence.
+	if (!Device.IsSVPRenderOnlyFrame())
+		f_main_view_adaptation_delta += Device.fTimeDelta;
 	u32 Offset;
 
 	// Targets

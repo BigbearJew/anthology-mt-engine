@@ -92,7 +92,7 @@ public:
 	};
 
 	template<typename T, bool Reverse>
-	void r_dsgraph_render_graph_sorted(R_dsgraph::mapDSGraphItems<T, Reverse>& graph, bool _clear = true);
+	void r_dsgraph_render_graph_sorted(R_dsgraph::mapDSGraphItems<T, Reverse>& graph, bool _clear = true, bool static_geometry = false);
 	void r_dsgraph_capture_hud();
 	void r_dsgraph_render_hud();
 	void r_dsgraph_render_hud_ui();

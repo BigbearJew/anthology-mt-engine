@@ -196,7 +196,7 @@ void CBlender_Tree::Compile(CBlender_Compile& C)
 	IBlender::Compile(C);
 
 	//*************** codepath is the same, only shaders differ
-	LPCSTR tvs, tps = "base";
+	LPCSTR tvs, tps = "anthology_flora";
 	LPCSTR tvs_s;
 	if (oNotAnTree.value)
 	{
@@ -222,14 +222,14 @@ void CBlender_Tree::Compile(CBlender_Compile& C)
 		if (oBlend.value && RImplementation.o.ssfx_branches)
 		{
 			tvs = "tree_branch";
-			tps = "tree_branch";
+			tps = "anthology_branch";
 		}
 #endif
 
 		if (bUseATOC)
 		{
 			string256 tps_atoc;
-			strconcat(sizeof(tps_atoc), tps_atoc, tvs, "_atoc");
+			strconcat(sizeof(tps_atoc), tps_atoc, tps, "_atoc");
 
 			uber_deffer(C, true, tvs, tps_atoc, oBlend.value, 0, true);
 			C.r_Stencil(TRUE, D3DCMP_ALWAYS, 0xff, 0x7f, D3DSTENCILOP_KEEP, D3DSTENCILOP_REPLACE, D3DSTENCILOP_KEEP);
@@ -257,7 +257,7 @@ void CBlender_Tree::Compile(CBlender_Compile& C)
 	case SE_R2_NORMAL_LQ: // deffer
 		if (bUseATOC)
 		{
-			uber_deffer(C, false, tvs, "base_atoc", oBlend.value, 0, true);
+			uber_deffer(C, false, tvs, "anthology_flora_atoc", oBlend.value, 0, true);
 			C.r_Stencil(TRUE, D3DCMP_ALWAYS, 0xff, 0x7f, D3DSTENCILOP_KEEP, D3DSTENCILOP_REPLACE, D3DSTENCILOP_KEEP);
 			C.r_StencilRef(0x01);
 			C.r_ColorWriteEnable(false, false, false, false);
@@ -266,7 +266,7 @@ void CBlender_Tree::Compile(CBlender_Compile& C)
 			C.r_End();
 		}
 
-		uber_deffer(C, false, tvs, "base", oBlend.value, 0, true);
+		uber_deffer(C, false, tvs, "anthology_flora", oBlend.value, 0, true);
 		C.r_Stencil(TRUE, D3DCMP_ALWAYS, 0xff, 0x7f, D3DSTENCILOP_KEEP, D3DSTENCILOP_REPLACE, D3DSTENCILOP_KEEP);
 		C.r_StencilRef(0x01);
 

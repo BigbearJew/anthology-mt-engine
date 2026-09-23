@@ -1,9 +1,25 @@
-#include "common.h"
+Texture2D<float4> s_image;
 
-float4 main(float2 tc : TEXCOORD0) : SV_Target
+#ifdef UPSCALE_PREPARE_DEPTH
+Texture2D<float> s_depth;
+struct UpscaleInputs
 {
-	// Convert the already display-referred SSS/NVG/thermal result to an FP16
-	// vendor input without inventing a missing exposure or reverse-tonemapping
-	// packed effect channels. This is a format conversion, not another filter.
-	return float4(s_image.SampleLevel(smp_rtlinear, tc, 0.0f).rgb, 1.0f);
+	float4 color : SV_Target0;
+	float depth : SV_Target1;
+};
+
+UpscaleInputs main(float4 position : SV_Position)
+{
+	int3 pixel = int3(position.xy, 0);
+	UpscaleInputs result;
+	result.color = float4(s_image.Load(pixel).rgb, 1.0f);
+	result.depth = s_depth.Load(pixel);
+	return result;
 }
+#else
+float4 main(float4 position : SV_Position) : SV_Target
+{
+	// Keep the existing display-referred signal without filtering subpixels.
+	return float4(s_image.Load(int3(position.xy, 0)).rgb, 1.0f);
+}
+#endif

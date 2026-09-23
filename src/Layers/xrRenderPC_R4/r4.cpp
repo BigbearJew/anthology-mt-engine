@@ -13,6 +13,7 @@
 
 #include "../xrRenderDX10/3DFluid/dx103DFluidManager.h"
 #include "../xrRender/ShaderResourceTraits.h"
+#include "../xrRender/ShaderCompileOptions.h"
 
 #include "../../xrCore/profiler.h"
 
@@ -1022,10 +1023,13 @@ LPCSTR WINAPI	D3DXGetVertexShaderProfile	(LPDIRECT3DDEVICE9	pDevice);
 
 void CRender::addShaderOption(const char* name, const char* value)
 {
-	D3D_SHADER_MACRO macro = {name, value};
-	m_ShaderOptions.push_back(macro);
+	ShaderCompileOptions::add(name, value);
 }
 
+void CRender::clearAllShaderOptions()
+{
+	ShaderCompileOptions::clear();
+}
 
 template <typename T>
 static HRESULT create_shader(
@@ -1359,9 +1363,9 @@ HRESULT CRender::shader_compile(
 
 	char sh_name[MAX_PATH] = "";
 
-	for (u32 i = 0; i < m_ShaderOptions.size(); ++i)
+	for (const auto& option : ShaderCompileOptions::get())
 	{
-		defines[def_it++] = m_ShaderOptions[i];
+		defines[def_it++] = option;
 	}
 
 	u32 len = xr_strlen(sh_name);
@@ -1752,13 +1756,15 @@ HRESULT CRender::shader_compile(
 		++len;
 	}
 
-	if (ps_smaa_quality)
+	// Ordinary PiP always uses spatial AA, including when main SMAA is off.
+	const u32 smaa_quality = ps_smaa_quality ? ps_smaa_quality : 3;
+	if (smaa_quality)
 	{
-		xr_sprintf(c_smaa_quality, "%d", ps_smaa_quality);
+		xr_sprintf(c_smaa_quality, "%d", smaa_quality);
 		defines[def_it].Name = "SMAA_QUALITY";
 		defines[def_it].Definition = c_smaa_quality;
 		def_it++;
-		sh_name[len] = '0' + char(ps_smaa_quality);
+		sh_name[len] = '0' + char(smaa_quality);
 		++len;
 	}
 	else
@@ -2060,7 +2066,10 @@ HRESULT CRender::shader_compile(
 	xr_strcat(folder_name, "\\");
 
 	string_path temp_file_name, file_name;
-	bool useGeneratedShaderCache = psDeviceFlags2.test(rsPrecompiledShaders);
+	// v144 changes the motion-owner and lens helper ABI. Existing bytecode caches
+	// validate their own CRC, not shader sources/includes, so neither the shipped
+	// objects nor an older generated cache may supply these DX11 variants.
+	bool useGeneratedShaderCache = true;
 	if (!useGeneratedShaderCache)
 	{
 		const xr_shared_ptr<ShaderVariantNames> file_set = indexed_shader_variants(folder_name);
@@ -2069,11 +2078,20 @@ HRESULT CRender::shader_compile(
 	if (useGeneratedShaderCache)
 	{
 		string_path file;
-		xr_strcpy(file, "shaders_cache\\r4\\");
+		xr_strcpy(file, "shaders_cache\\r4\\anthology_pip153c\\");
 		xr_strcat(file, name);
 		xr_strcat(file, ".");
 		xr_strcat(file, extension);
 		xr_strcat(file, "\\");
+		// This producer is self-contained. Its bytecode CRC checks corruption,
+		// not staleness: include the actual source in its generated-cache key.
+		if (0 == xr_strcmp(name, "svp_motion_map") || 0 == xr_strcmp(name, "effects_sun"))
+		{
+			string32 sourceKey;
+			xr_sprintf(sourceKey, "%08x_", crc32(pSrcData, SrcDataLen));
+			xr_strcat(file, sourceKey);
+			Msg("* [pip152/cache] %s source=%s bytes=%u", name, sourceKey, u32(SrcDataLen));
+		}
 		xr_strcat(file, sh_name);
 		FS.update_path(file_name, "$app_data_root$", file);
 	}

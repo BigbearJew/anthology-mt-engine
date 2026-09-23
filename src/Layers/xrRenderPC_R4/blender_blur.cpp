@@ -95,6 +95,8 @@ void CBlender_ssfx_ssr::Compile(CBlender_Compile& C)
 
 		C.r_dx10Texture("s_position", r2_RT_P);
 		C.r_dx10Texture("ssr_image", r2_RT_ssfx_ssr); // Prev Frame
+        C.r_dx10Texture("s_pip_main_reflection", "$user$svp_main_reflection");
+        C.r_dx10Texture("s_pip_main_effect_position", "$user$svp_main_effect_position");
 		C.r_dx10Texture("s_rimage", "$user$generic_temp");
 		C.r_dx10Texture("s_motion_vectors", r2_RT_ssfx_motion_vectors);
 		C.r_dx10Texture("s_prev_pos", r2_RT_ssfx_prevPos);

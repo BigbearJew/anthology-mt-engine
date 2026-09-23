@@ -6,6 +6,7 @@
 #include		"../../xrEngine/bone.h"
 #include		"../../Include/xrRender/Kinematics.h"
 #include "../../xrEngine/IRenderable.h"
+#include "../../xrEngine/RenderHistoryEpoch.h"
 #include <optional>
 
 // refs
@@ -125,7 +126,7 @@ public:
 protected:
 	SkeletonWMVec wallmarks;
 	u32 wm_frame;
-	u32 CurrentFrame;
+	RenderHistoryEpoch motionHistoryEpoch;
 	Fmatrix	Matrix_Prev;
 	Fmatrix Matrix_Temp;
 

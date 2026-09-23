@@ -5440,3 +5440,498 @@ allocation reduction, wait/barrier fixes, and owner-thread-safe task usage.
   `E:/ANTHOLOGY_BACKUPS/20260830_v139_pre_rt_lifecycle_render_profile`. No new
   game is required and the shader cache was not read, deleted, moved or
   rewritten.
+## 2026-09-13 - v140 cached PiP, lens controls and temporal input correction
+
+- Continued from v139 on branch `anthology-v140-pip-temporal-controls`.
+- PiP reuses a real scope-camera capture for 1-8 main frames (default 4),
+  with rotational reprojection and early refresh for camera motion/roll,
+  zoom, owner/device/quality changes and 100ms image age. Matrices publish
+  with the copied texture. Frame decisions latch before callbacks and return
+  immediately on repeated queries; every capture attempt reserves a following
+  main frame. Menu/reset/empty render paths invalidate lens content.
+- Fixed the FPS limiter waiting on hidden lens frames, which could halve the
+  displayed rate under the previous alternating PiP cadence.
+- MCM adds brightness, contrast, saturation, gamma, grain, dirt and tint
+  (clear, bordeaux, green, brown, yellow). Grading runs every main frame;
+  NVG/thermal palettes and the active module 1.1 MRT/TAA skip mask are preserved.
+  Reconciled the older authored D copy with the active quality_percent_v2
+  slider and TAA mask before packaging.
+- DLSS/FSR advance a contiguous main-view jitter sequence, reset invalid
+  history, use elapsed main-render time and the active FSR near plane, and
+  export aligned color/depth in one MRT draw with integer loads.
+- Four-slot DONOTFLUSH GPU queries compare native/upscaled main renders and
+  preparation/vendor time. PiP capture/main CPU counters use the existing
+  mt_frame_profile/detail switches. Production profiling does not wait.
+- Final DX11 and DX11-AVX builds pass with zero errors. Scheduler tests pass
+  60,122 checks; matrix tests pass 333 cases; eight lens shader variants and
+  both strict upscaler export shaders compile. MCM Lua 5.1/localization and
+  production-method FSR/WARP harness checks pass.
+- Installed 13 hash-verified files: two EXE/PDB pairs, seven module 1.1
+  lens/MCM files and two active Upscaler Runtime v135 shaders. All nine MO2
+  winning payload files match the package. Existing profile order and user
+  rendering preferences were preserved.
+- Package: `D:/ANTHOLOGY_DEV/releases/Anthology v140 - PiP and Upscaler`.
+  Backup: `D:/ANTHOLOGY_DEV/backups/v140-pre-install-20260913-045249`.
+  Hashes, targets and test limits are in manifest.json, installation.json,
+  validation.json and mo2-verification.json inside the package.
+- Game boot, save/load, visual comparison and FPS measurement have not been
+  performed for v140. The reported 50%-to-10% target remains unmeasured.
+  Rotation reprojection does not reconstruct moving targets, nearby parallax
+  or newly exposed surfaces. Start comparison at quality 100, temporal mode 1,
+  interval 4 in the same warmed scene.
+
+## 2026-09-13 - v141 PiP motion reconstruction and neutral sharpness
+
+- User confirmed v140 controls and reuse worked but movement inside the scope
+  was visibly choppy; reported 100-110 FPS and 80-90 with frame reuse. The
+  actual selected interval was not provided. Continued in-place on branch
+  `anthology-v141-pip-motion-sharpness` without resetting saved preferences.
+- Added lens-only sharpness 0-2, neutral 1, with actual softening below 1 and
+  bounded unsharp detail above 1. Reticle/grain/color controls remain separate.
+- Default maximum interval is now 2, and the scheduler requests a fresh image
+  after 33 ms instead of 100 ms while still reserving a main frame after each
+  hidden capture. Stored interval values retain their previous selection.
+- Captures isolated depth before restoring the reduced SVP render-target bank,
+  pairs it with successful scope color publication, builds filtered pyramids
+  and estimates scope-to-scope motion with bounded matching and subpixel LK.
+  Main-camera object/bone velocity history is deliberately not reused.
+- The displayed lens uses current main depth, camera reprojection and validated
+  capture motion every presented frame. Current main color supplies newly
+  uncovered or ambiguous regions; static capture detail is retained. This
+  fallback is disabled for native/head NVG and thermal palettes. Large periodic
+  motion aliases are rejected instead of displaying their false motion.
+- Profiling now includes valid-flow main-frame count and average/max capture
+  sample age. Temporal-off mode skips the new capture-history/flow GPU passes.
+- Both final DX11 and DX11-AVX builds pass. Scheduler: 60,122 checks; actual
+  matrix/FOV/depth mapping: 3,008 checks; eight lens and ten capture/flow shader
+  variants compile. New capture shaders pass strict compilation. Lens warnings
+  retain the previous 18/22 counts. MCM Lua 5.1, 15 options, and cp1251 ENG/RUS
+  localization checks pass with all previous option IDs preserved.
+- D3D11 WARP executes actual production shaders: 3,072 depth readbacks, seven
+  silhouette/guard scenarios (8,320 pixels each), sharpness 0/1/2, thirteen flow
+  scenarios and seven end-to-end temporal-image comparisons pass. Synthetic
+  half-interval RMSE improves from .058160 to .000365 for a 4px horizontal target
+  and from .109652 to .011580 for the ambiguous 8px diagonal scenario.
+- Installed 19 hash-verified files; all 15 gamedata winners match in the selected
+  `Anthology 2.1 HARD Сложный` profile. Active module 1.1 and existing Runtime v135
+  remain their providers. Saves, user settings, profile order and the shader
+  cache were preserved.
+- Release: `D:/ANTHOLOGY_DEV/releases/Anthology v141 - PiP Motion and Sharpness`.
+  Backup: `D:/ANTHOLOGY_DEV/backups/v141-pre-install-20260913-070416`.
+  Reproducible GPU tests: `tools/tests/run_pip_flow_gpu_test.cmd`; evidence and
+  source hashes: `_build/v141-validation/pip_gpu_validation.json` and
+  `_build/shader_validation/v141/*compile_summary.json`.
+- No v141 game boot, save/load, hardware gameplay FPS or visual comparison was
+  performed. Live-main fallback can temporarily have less detail than real PiP;
+  fast changes and protected imaging modes still need in-game evaluation.
+
+## 2026-09-13 - v142 PiP screenshot artifact regression
+
+- User's v141 screenshot showed rectangular brightness/color blocks and broken
+  object boundaries inside the scope. The earlier synthetic average-error
+  tests missed spatially varying confidence and mismatched color stages.
+- Ordinary SDR PiP now captures generic0 immediately before the reticle stage,
+  matching the main generic_temp source before LUT/TAA/final postprocess.
+  A separate full-resolution pending target normalizes reduced-bank UVs;
+  successful current-frame publication pairs it with depth and flow history.
+  Imaging-domain changes reset the motion pair; failed capture cannot publish.
+- The main-image crop now uses saved WORLD projection/view, because reticle
+  materials replace Device matrices with HUD FOV. Shared jitter calculation
+  supplies exactly the same native/vendor vertex jitter to both bindings.
+- Flow interpolation excludes invalid vectors and other-depth surfaces instead
+  of interpolating sentinel values. Inverse candidates require depth and cycle
+  agreement. Current depth, not quarter-resolution confidence, selects main RGB
+  at changed silhouettes. This prevents stale foreground bleed into uncovered
+  background. Ambiguous same-surface regions retain coherent captured detail.
+  HDR/MSAA/NVG/thermal color-source guards remain explicit. Protected-mode
+  neighbor search uses bounded loops to avoid excessive shader inlining.
+- Final DX11 and DX11-AVX builds passed; 20 shader variants passed (8 complete
+  lens variants retain exactly baseline 18/22 warning diagnostics; 12 capture/
+  temporal variants pass strict compilation without warnings). Matrix and real
+  binding coverage: 4,547 checks; 1,044 expose the old HUD/world projection.
+- Actual production HLSL in D3D11 WARP reproduced the old static mosaic:
+  21,120/42,240 pixels changed and block-edge RGB error reached .091536.
+  New regressions pass 126,720 static checks and 98,304 scene-capture checks.
+  Textured moving-object P95 error is .020167 versus held .040722; grid-edge
+  P99 is .022611, with zero severe interior or changed-silhouette errors.
+- The old ambiguous-diagonal global 30% improvement assertion depended on
+  unsafe sentinel-driven live RGB. Its replacement separately requires valid
+  motion improvement, globally non-worse output, and exact rejected-area hold.
+  Measured global RMSE .109652 -> .093699 (14.55% improvement), valid regions
+  .102976 -> .018075 (82.45%); all 3,140 fully rejected pixels retain capture.
+  Other existing GPU assertions remain. Both final suites pass with shader
+  SHA256 b3c0a7bd5a9e43cc97811c6a3b38de89c37e4dec1e65b0575304893040ef3f58.
+- Final full r3 material has 5,765 static instruction slots / 63 temporaries,
+  versus v141 4,233 / 43. These include conditional paths and do not measure
+  runtime cost. Eight complete lens compiles took 249.336 seconds total.
+- Installed 20 hash-verified cumulative payload files (8 changed), including
+  the required new svp_scene_capture.ps; all 16 gamedata winners match in
+  the selected MO2 profile. MCM/localization are byte-identical to v141;
+  sharpness remains neutral 1 with range 0-2. User settings, saves, profile
+  ordering and shader cache were not changed.
+- Release: `D:/ANTHOLOGY_DEV/releases/Anthology v142 - PiP Artifact Fix`.
+  Backup: `D:/ANTHOLOGY_DEV/backups/v142-pre-install-20260913-080819`.
+  Branch: `anthology-v142-pip-artifact-fix`; no commits or pushes.
+- Commands and evidence are in release validation.json/evidence and
+  tools/tests/pip_gpu_regressions.md. Both EXE/PDB pairs match the package.
+- No game boot, save/load, real-scene visual comparison or hardware gameplay
+  FPS was performed. Ambiguous motion can still hold until a fresh capture;
+  live silhouette fallback has main-view detail. Modern frame-generation
+  smoothness and the desired 10% FPS cost remain unverified.
+
+## 2026-09-13 - v143 stable PiP reuse after real-scene regression
+
+- User reports roughly halved aim FPS, wavy textures and ineffective slider
+  after v142; screenshot shows 36 FPS. Which slider was meant was not supplied.
+  Read-only saved config: quality 100, temporal mode 1, interval 2, sharpness 1.
+- Reproduced cadence failure independently: unconditional 33ms expiry changed
+  interval 2/4/8 to alternating hidden capture/main at low internal frame rates.
+  Removed that expiry. Normal camera movement no longer forces capture after
+  5cm or 8% of scope FOV; override thresholds are 1m and 25% FOV with limits.
+  Large movement, FOV/imaging/quality changes, failed capture and mandatory main
+  presentation protections remain. Settings were not reset.
+- Retired optical-flow reconstruction instead of extending its per-pixel
+  confidence/depth heuristics. Lens sampling uses one camera rotation transform
+  and coherent capture color. Independent moving objects are held until capture.
+  Removed flow/depth/previous-history textures, capture/history copies, six
+  pyramid and three flow passes, bindings and flow state. Compatibility shader
+  files already installed are inert and were not deleted.
+- Sharpness uses one projected coordinate plus 1/5 capture-color taps and the
+  actual selected render resolution; neutral 1 is unchanged at 100/50/25%.
+  MCM IDs/defaults/script remain unchanged. Exactly two tooltip descriptions in
+  each ENG/RUS locale now describe the real behavior; cp1251 round trip passes.
+- Ordinary SDR PiP exits combine after successful same-frame scene capture;
+  the previously computed remaining postprocessing image was discarded. Clears
+  queued scope HUD geometry and restores world/RT/viewport/stencil/debug state.
+  Main view, HDR, head NVG, thermal and failed captures preserve required paths;
+  caller profiling and render-target bank restoration still execute.
+- Final DX11 and DX11-AVX builds pass. Scheduler: 61,313 checks across low/high
+  rates and intervals, with v142 negative control failure. Actual extracted
+  camera-refresh C++: 10,992 checks / 135 normal-motion and 18 forced-refresh
+  cases; v142 threshold negative control fails independently. Pipeline branch
+  checks cover 1,024 combinations. Ten shader variants compile; all lens warning
+  diagnostics match v142 exactly, and scene capture has zero strict warnings.
+- On RTX 5070, hardware timestamps for the active lens sampling branch at
+  512x512 pixels from a 1920x1080 RGBA32F source: median neutral sharpness
+  .065504ms v142 -> .008160ms v143. Non-neutral capture filtering is about
+  .017ms. Old nine flow passes cost about .388ms and two FP32 history copies
+  .163ms; these isolated GPU costs do not explain halved game FPS by themselves.
+  Full material static instructions fall 5,765 -> 1,466; temporaries 63 -> 29.
+- Eight-frame stationary-texture sequence with changing false flow reproduces
+  v142 mean RGB movement .01467872 / max .07038435; v143 is exactly unchanged.
+  Eight yaw/pitch frames check 1,877,184 pixels against independent ray math;
+  max RGB error .00000230. These checks establish coherent camera movement,
+  not frame generation for independent moving objects or full-game performance.
+- Installed 17 hash-verified files (8 changed); all 13 gamedata winners match
+  in the selected MO2 profile. Both EXE/PDB pairs updated with verified backup.
+  Saves, user settings, mod ordering and shader cache are unchanged.
+  Release: `D:/ANTHOLOGY_DEV/releases/Anthology v143 - Stable PiP Reuse`.
+  Backup: `D:/ANTHOLOGY_DEV/backups/v143-pre-install-20260913-150735`.
+  Branch: `anthology-v143-pip-stable-reuse`; no commit or push.
+- Evidence and source hashes are in release validation.json/evidence. Current
+  helper SHA256: 6096037ffbaa360cbf834ae99af6bb52e29ea4c38b23cd121f8eaaf7b0f4a80e.
+  No game boot, save/load, real-scene image comparison or in-game FPS was run.
+  Original modern-game smoothness / 10% FPS-loss target remains unachieved;
+  increased interval trades independently moving-object update rate for cost.
+
+## 2026-09-19 - v144 full PiP motion reconstruction
+
+- User confirms v143 restored performance, but both camera translation and
+  independently moving characters still jerk. User selected full separate PiP
+  with the prior detailed capture. The implementation retains that render and
+  the v143 capture scheduler, render-quality controls and saved MCM settings.
+- Between captures, one GPU pass carries capture coordinates using the current
+  main view's geometric motion vectors. The lens samples immutable captured
+  RGB; RGB is not repeatedly resampled into a history texture. Depth, surface
+  identity, camera matrices, actual jitter and capture/main time brackets reject
+  incompatible history. A local current-main fallback covers newly exposed or
+  unknown surfaces; those regions temporarily have main-view detail.
+- Captured depth/owner and two address maps use the actual scope render size.
+  Map format is RGBA32F; capture depth is R32F and owner is R16F. Startup retains
+  detailed v143 rotation reuse until an adjacent main-frame pair can seed the
+  capture. MSAA, HDR, head NVG and thermal keep the established protected path.
+- Main serials exclude hidden capture renders. Bone history is reset after
+  missed main frames and skeleton reuse; capture wind cannot overwrite prior
+  main wind. Packet owner and nested skin-history flags are scoped and restored.
+  Unknown rigid history falls back locally instead of inventing motion.
+- Surface owners use a bounded pool of 13,312 exactly representable FP16 IDs.
+  Reusing an ID still referenced by retained capture/history advances a
+  generation and invalidates reconstruction. Allocation/free are locked;
+  per-draw access has no locks or allocations. Generation is checked before
+  and after depth/map submission. Same-owner self-occlusion and nonlinear
+  animation remain approximate.
+- Added a one-time VFS check for the tested screenspace_mvectors.h contract.
+  Missing or different producers disable reconstruction and log stable reuse.
+  DX11 uses shaders_cache/r4/anthology_pip144/ and bypasses old shipped objects:
+  the old cache checked only bytecode CRC, not changed source/includes. Existing
+  cache files are preserved. First launch must compile the new shader variants.
+- Opt-in mt_frame_profile now reports p50/p95/max CPU Present-completion
+  intervals, including separate hidden-capture and regular intervals. Disabled
+  profiling adds no timing calls, sorting or copying. These are completion
+  timings, not monitor scanout or photon timings.
+- Final production shaders pass 16 compile variants; all eight complete lens
+  variants retain exactly the baseline 18/22 warnings with no new diagnostics.
+  Actual shaders pass RTX 5070 and D3D11 WARP readback suites, including actual
+  FP16 producer encoding (336 cases per adapter), 43 analytical coordinate
+  scenarios and 12 rejection scenarios. Coplanar foreground/background owner
+  checks reject old-object bleed even at zero depth separation.
+- Nine production-lens quality/sharpness combinations match the reference:
+  neutral sharpness remains 1, with softening below 1 and detail above 1.
+  A 32-step stress test has maximum coordinate error 0.373321 map pixels;
+  this long stress sequence is beyond the MCM maximum interval of eight.
+- Synthetic RTX 5070 timestamps: 1024x576 map seed 0.039456 ms, propagation
+  0.050976 ms; a 512x512 neutral lens draw costs 0.012416 ms versus v143
+  0.003424 ms. Earlier full-size 1920x1080 map propagation measured about
+  0.1824 ms. These isolated pass costs exclude scene rendering, simulation,
+  postprocessing, scheduling and Present; they establish no game FPS gain.
+- The implementation does not eliminate the hidden capture FrameMove/render
+  tick before the next main Present. Periodic capture pauses can remain.
+  Skipping that tick safely requires separating simulation, camera callbacks,
+  worker queues and per-view render caches. Full modern-game smoothness,
+  unchanged real-scene quality and the requested 10% FPS cost remain unverified.
+- Final DX11 and DX11-AVX builds pass with zero errors; both PE CodeView records
+  match their PDB GUID/age. Interrupted AVX compilation required rebuilding the
+  xrGame intermediate PDB, followed by a successful final solution build.
+  Seven persisted CPU suites pass 87,303 checks. Sixteen final shader compiles
+  and four hardware/WARP runs use the packaged shader hashes.
+- Staged 25 cumulative payload files, 16 changed, in
+  D:/ANTHOLOGY_DEV/releases/Anthology v144 - PiP Motion Reconstruction.
+  All 17 installed v143 files matched the original release at staging. Backup:
+  D:/ANTHOLOGY_DEV/backups/v144-pre-install-20260919-152931.
+  Installation status and final MO2 winners are recorded separately in the
+  release installation.json and mo2-verification.json when installation passes.
+- Preparation and validation helpers are in D:/ANTHOLOGY_DEV/diagnostics/v144-release;
+  test provenance is _build/v144-validation/final_gpu_validation.json and
+  tools/tests/pip_gpu_regressions.md. Work branch:
+  anthology-v144-pip-smoothness. No commit or push.
+- Installed all 25 hash-verified payload files (16 changed); all 21 gamedata
+  winners match in the selected MO2 profile. Saves, settings and mod ordering
+  were preserved. Game boot, save/load and gameplay FPS remain untested.
+- The worklog was recovered after a zero-filled write: the HEAD prefix is
+  byte-identical, v140-v143 notes were restored from the prior tool read and
+  v144 notes were refreshed. Scanning all changed/untracked text inputs found
+  no other NUL-filled source; release evidence rejects NUL text documents.
+
+
+## v145 — Runtime Seasons integration (2026-09-19)
+
+- Ported the local Anthology Runtime Seasons mechanism onto the cumulative v144 engine; original donor files and packed game resources remain unchanged.
+- Added persistent r__flora_style 1..6 and the per-frame seasonal shader constant, material-specific foliage/grass/ground/terrain/winter-object bindings with resource fallbacks, and cached Winter-only environmental/footstep sound substitution.
+- Corrected the donor's missing seasonal SSS MID terrain selection. Atomic season publication supports the sound worker. Original sound AI range and existing asynchronous source preparation are preserved. The unrelated donor connection-spawn change was omitted.
+- Cache namespace is shaders_cache/r4/anthology_seasons145. Existing caches are retained.
+- Built DX11 and DX11-AVX with _LINK_=/DEBUG:NONE as requested; no PDB installed. Both test copies reached the main menu on A's archives. Six-mode in-game Lua probe had no positive marker and is not counted as a passed test. World season changes and save/load remain manual QA.
+- Passed 1476 seasonal plus 15 service shader configurations, production sound-selection/state fixtures, three Lua syntax checks, 98 cache checks, 17 motion shader gate checks, and 1024 PiP scheduling combinations.
+- Installed two EXEs and seven required shaders into A:/YandexDisk and B:/Google Anthology installations. SHA-256 verified all 18 installed files, existing protected files, and relevant source archives. No DB, user settings, save files, LAN executable, or X game installation changed.
+- Release: D:\ANTHOLOGY_DEV\releases\Anthology v145 - Runtime Seasons
+- Backup: D:\ANTHOLOGY_DEV\backups\v145-pre-install-20260919-161949
+- Project/reproducible checks: X:\OpenAI\anomaly-codex-main\projects\anthology-runtime-seasons-integration
+
+
+## v145.1 — Seasonal material initialization crash (2026-09-19)
+
+- The live X installation crashed at 16:34:58 with CRT invalid_parameter_handler while loading level materials. The v145 ground-season bindings read fnameA/fnameB before their bump/flat initialization. Moved those bindings after initialization and zero-initialized all three filename buffers.
+- A production-code fixture poisons the buffers and checks 64 combinations of flat/bump, seasonal/stock, missing/present support maps, detail bump, HQ and alpha. The corrected code passes; the archived v145 source fails on an unresolved filename. The crash log has no precise stack, so user world-load confirmation remains pending.
+- DX11 and DX11-AVX builds passed with _LINK_=/DEBUG:NONE. No PDB. No shader or sound logic changes; existing v145 shader/sound results are marked as inherited evidence.
+- Installed both EXEs and seven required shaders on live X, A and B with hash verification and backups. Preserved unrelated gamedata, settings and LAN EXEs. DB archives and saves were not edited. Gameplay and save/load have not been exercised on this fix.
+- Release: D:\ANTHOLOGY_DEV\releases\Anthology v145.1 - Seasonal Material Fix
+- Backup: D:\ANTHOLOGY_DEV\backups\v1451-pre-install-20260919-164937
+
+
+## v145.2 — Reproduced post-load CRT failure (2026-09-19)
+
+- The v145.1 ground filename initialization fix did not resolve the user's reported crash. Reproduced the same invalid_parameter_handler error using a copy of the live X save and the 215-archive MO2 profile (direct EXE launch only had 175 archives and was not representative).
+- Added fatal-only raw module/RVA stack logging, with external linker MAP evidence and no installed PDB. Resolved stack: shader_compile -> w_close -> CLocatorAPI::Register -> CRT string copy. Register used a 256-byte path temporary, inconsistent with the surrounding 520-byte string_path buffers. The seasonal cache path exposed that limit.
+- Changed Register's normalization buffer to string_path. Production-prefix/CRT fixture passed 13 boundary and X/A/B path cases; archived old code fails at 256 bytes. Existing 98 shader cache checks pass. No shader cache namespace or rendering algorithm changes.
+- Both DX11 and DX11-AVX builds passed without PDB. Actual AVX world-load reproduction now passes: the same save, 215 archives, actor first update followed by >=15 seconds and >=100 updates, then probe-requested quit, no fatal or Lua runtime/syntax error. Original saves/mods/profile are untouched. Full save roundtrip and long gameplay remain untested.
+- Installed two EXEs and seven unchanged service shaders to X, A and B with verified hashes and protected-file checks. No PDB or MAP installed.
+- Release: D:\ANTHOLOGY_DEV\releases\Anthology v145.2 - Shader Cache Path Fix
+- Backup: D:\ANTHOLOGY_DEV\backups\v1452-pre-install-20260919-173745
+
+
+## v146 — Seasonal SSS flora routes (2026-09-19)
+
+- SSS tree HQ, tree LQ and ATOC paths bypassed seasonal texture binding; Lua details_blend selected deffer_grass outside uber_deffer. Connected these paths to existing authored seasonal resources, preserving original SSS branch/grass lighting, normals, wind and motion vectors.
+- Added private SSS sload adapter changing only tbase and seasonal ATOC alpha coverage; no global SSS file replacement. Missing variants retain base textures. Diagnostics are opt-in and bounded at material creation. Shader cache namespace is anthology_seasons146.
+- DX11 and DX11-AVX build successfully without PDB. 294 shader compilations passed, including mode-6 specialization without season texture bindings; production-route fixture passed 44 cases. Existing material and cache checks also passed during development.
+- DX11-AVX loaded the copied live save with all 215 MO2 archives and completed six modes on l01_escape, >=6 seconds and >=60 updates per mode. Captures and log archived. Earlier intermittent native-load and Lua clamp(nil) errors are archived and are not claimed fixed; later instrumented runs preserved original clamp behavior and completed. Long gameplay and save roundtrip remain untested.
+- Installed two EXEs and 59 shader files on X/A/B with backups, verified hashes and MO2 override checks. No PDB/MAP installed; settings, archives and saves preserved.
+- Release: D:\ANTHOLOGY_DEV\releases\Anthology v146 - Seasonal Flora
+- Backup: D:\ANTHOLOGY_DEV\backups\v146-pre-install-20260919-182553
+
+
+## v146 deployment repair (2026-09-20)
+
+- Live X installation lost all 59 authored shader files while both EXEs still matched v146; A/B payloads remained intact. Live log explicitly substitutes stub_default for branch flat, branch bumped and SSS grass. All three cached binaries were identical 700-byte programs without alpha discard, season uniforms or deferred outputs. Mode 6 uses these shader entry points too. Cause of file disappearance is not established.
+- Restored the 59 missing files from the SHA-256 verified release. Quarantined the entire v146 namespace in a sibling directory, preserving and hashing 385 cache records, because generated bytecode does not validate source/include content. Verified all 61 installed payload files and protected EXEs/settings. No engine-code or user-save changes.
+- Evidence: projects/anthology-runtime-seasons-integration/reports/v146-flora-corruption-20260920 (workbench).
+
+
+## v146 original-file player package (2026-09-20)
+
+- Prepared a separate player folder containing exactly two EXEs and db/shaders_anthology_runtime_seasons.xdb0, plus Russian copy-by-path instructions and the required v146 cache reset. All 59 authored shaders are inside the replacement archive; no loose shader installation is needed.
+- Complete original archive preserved: unpack/repack/unpack hashes match all 925 expected resources (51 added, 8 changed, 866 unchanged). Existing xrCompress automatically mounted a source archive placed beside it and substituted 8 older files on the first attempt; comparison caught this and the isolated packing step now keeps source backups without archive extensions.
+- The isolated 215-archive DX11-AVX world test ran Original/Autumn/Winter after removing all 59 loose payload files and regenerating its cache. No required shader stubs or fatal errors. Three regenerated flora programs have alpha discard, seasonal constants and deferred outputs. Live game archives were not modified during packaging.
+- Player folder: D:\ANTHOLOGY_DEV\releases\Anthology v146 - ДЛЯ ИГРОКОВ
+- Evidence: projects/anthology-runtime-seasons-integration/reports/v146-player-package (workbench).
+
+
+## v147 — PiP interval4 runtime fix (2026-09-20)
+
+- Actual current X/A/B MO2 SSS23.5 helper lacked motion-owner encoding, so the v144 renderer disabled motion reconstruction. Ship the reviewed helper in the original SSS mod as well as DB; preserve PiP helper/reticle winners. Fresh anthology_pip147 cache prevents old bytecode from silently bypassing the new contract.
+- Temporal hidden captures reuse the preceding simulation pose; do not advance simulation timers or repeat seqFrame, particles, bones worker or GameThread. Main updates consume all elapsed time. Retain ordinary ticks during pause/loading, constant FPS, absent camera/level and native mode. -pip_legacy_tick remains a diagnostic opt-out.
+- Publish the lens before returning from hidden CLevel::OnRender; no discarded screen UI/reshade. This is required because MT UI is scheduled only for simulated main frames. An early rejected candidate stalled at this barrier; archived stack sampling identified it.
+- 14,060 actual FrameMove/UI-tail fixture checks, 35,619 motion epochs, 10,992 capture-refresh checks, 1,024 capture pipeline combinations and 17 shader gate checks passed. Both DX11 binaries built without PDB. DX11-AVX exercised PiP4; DX11 repeated it using the final DB and completed a save/load cycle with 215 MO2 archives. Runtime counters confirm 60 seeds + 180 propagated frames per 240 main frames, 60 render-only captures; compiled reticle/SSS bytecode carries the new bindings.
+- Same-scene timing: median of 256-present window medians after capture 34.963 ms -> 26.048 ms; median window p95 after capture 45.474 ms -> 31.984 ms (7/8 windows, 1792/2048 presents). This is not a universal FPS claim; initial loading/inactive PiP windows excluded. Scene simulation is not deterministic. Runtime images checked; subjective smoothness of every animation remains user QA.
+- Earlier long probes exhausted the gameplay aim-stamina limit and failed their PiP assertion. The final probe disables this limit only inside the isolated diagnostic script and checks post-load PiP continuity on every main update for 18 seconds. Gameplay files and stamina settings are not changed.
+- Player replacements include two EXEs, the original seasonal DB with all 925 v146 resources unchanged and 12 added PiP shader resources, and named SSS/PiP MO2 file replacements. No PDB/MAP, settings or saves shipped. X/A/B installed with per-file backups and SHA256 verification.
+- Player folder: D:\ANTHOLOGY_DEV\releases\Anthology v147 - ДЛЯ ИГРОКОВ
+- Backup: D:\ANTHOLOGY_DEV\backups\v147-20260920-042208
+
+
+## v148 — PiP detail recovery and shader compile isolation (2026-09-20)
+
+- Keep v147 render-only interval4 scheduling. Recover immutable capture detail for depth/owner-validated world samples; foliage uses motion first, validated depth fallback second. No extra captures, repeated RGB filtering, forced resolution or sharpening changes. Preserve negative SSS foliage masks.
+- Found cross-thread macro contamination: ordinary foliage bytecode contained s_detail/USE_TDETAIL although the material did not bind detail. Global m_ShaderOptions shared by parallel tessellation/material preparation was unsafe. ShaderCompileOptions now uses thread-local storage; compiled plain foliage no longer references s_detail. Seasonal shader formulas and resources unchanged. Cache anthology_pip148b discards contaminated bytecode.
+- 32768 concurrent option cycles pass; deterministic shared-list negative control fails. 294 flora shader compilations, 12289 shader-contract checks and analytical hardware GPU reconstruction/disocclusion/immutable-RGB fixtures pass. Both final EXEs run the 215-archive MO2 reproduction; AVX saves/loads in one process, DX11 loads the result; post-load continuous PiP and all six seasonal styles checked visually and via counters (60/180/240).
+- Matched v147/v148 timing: window-median p50 20.485/19.661 ms, p95 31.925/30.452 ms; after-capture p50 28.016/27.212 ms. 2304/2304 presents; non-deterministic scene, no universal FPS claim.
+- SampleGrad candidate rejected after color recurred; original seasonal sampling retained. Earlier pre-isolation loads included native assertions/heap corruption; archived, not counted as passes and not all claimed fixed. Disoccluded detail still falls back to main view until next capture; extended play/NVG/thermal/MSAA runtime coverage remains open.
+- Verified replacement archive: 937 resources, four PiP/SSS files changed, 933 unchanged; hash-exact unpack roundtrip. Two EXEs plus original DB and named SSS/PiP provider replacements installed to X/A/B with backups; no PDB/MAP/settings/saves/probes shipped.
+- Player folder: D:\ANTHOLOGY_DEV\releases\Anthology v148 - ДЛЯ ИГРОКОВ
+- Backup: D:\ANTHOLOGY_DEV\backups\v148-20260920-060249
+- Evidence: D:\ANTHOLOGY_DEV\releases\Anthology v148 - PiP Clarity
+
+
+## v149 — PiP spatial AA and boundary reconstruction
+
+Ordinary scene capture now resolves SMAA before its early exit (main SMAA off
+defaults the compiled preset to High). Interval4 scheduler and per-present
+dynamic-owner motion are unchanged. Captured world/foliage pose is reprojected
+without coarse wind-vector deformation. Fine world/sky coverage uses captured
+depth under current actor/HUD/occluder rejection; incomplete map coverage blends
+colour continuously, never unrelated addresses. v148 TLS shader options and
+seasonal colour behavior remain byte-identical.
+
+Both production EXEs passed copied-save load, fixed/rotating ADS, save/reload,
+and exit. GPU fixtures: immutable RGB, adjacent identities, coplanar disocclusion,
+144 recovered fine edge pixels with zero false foreground, 18985 subpixel sky
+samples recovered, coverage max step 1 -> .04686, foliage deformation .875315
+-> .000046 capture pixels. 9 full PS variants, 12289 shader-contract checks,
+1024 mode/pipeline cases. Final per-scene present p50 19.611 ms
+vs 20.405 baseline; AI/weather not deterministic.
+
+One earlier exit-only failure is archived (secondary get_path during Lua stack
+logging; original-record candidate CInifile::Item destructor). No claim to fix it.
+Wind pose advances on full captures; unseen detail still uses main-view fallback.
+Evidence: X:\OpenAI\anomaly-codex-main\projects\anthology-runtime-seasons-integration\reports\v149-pip. Player replacements: D:\ANTHOLOGY_DEV\releases\Anthology v149 - ДЛЯ ИГРОКОВ. Installed X/A/B; no PDB.
+
+# v150 — PiP contour recovery (2026-09-20)
+
+The v149 renderer still replaced valid detailed edges with a magnified main-view
+image. Its nearest main-depth/owner selection and incomplete address history
+produced large steps around characters and inconsistent sky gaps in foliage.
+
+The v150 motion-map shader resolves competing main-view layers against the
+captured depth/owner, and extrapolates trustworthy nearby history to the requested
+ray within a bounded main-pixel footprint. Capture-owner and depth checks remain
+mandatory. Sky and foliage coverage also retain more of the captured pose.
+The search radius accounts for both main and PiP render resolution.
+
+Only `gamedata/shaders/r3/svp_motion_map.ps` and its r4 counterpart changed in
+the cumulative archive: 2 of 937 files, with 935 byte-identical to v149.
+The distributed EXEs are byte-identical to the verified v149 binaries. Seasons,
+foliage colour, SSS producer masks, MCM and sharpness controls are unchanged.
+The render-only capture cadence remains interval 4; no world render was added.
+
+Validation: both ordinary DX11 and AVX loaded the isolated 215-archive profile
+and completed the large Leupold scope probe; DX11 also saved and reloaded
+`pip150_roundtrip`. Final production shaders passed nine compile variants and
+the analytical GPU tests, including 32 propagation steps, owner separation and
+coplanar disocclusion. Four GPU input captures from the actual game were replayed
+against both versions; no valid result sampled a different captured owner.
+
+In the central circular test region, unnecessary main-image fallback changed
+from 14.93% to 2.26% and 15.84% to 1.81% in the two character captures; the two
+foliage captures changed from 14.14% to 1.13% and 30.38% to 13.80%.
+These are coverage measurements, not a perceptual quality score.
+
+The same copied-save AVX test at interval 4 recorded median window p50
+18.575 ms before and 18.389 ms after,
+with median p95 28.026 and 28.498 ms.
+AI/weather vary between runs; periodic PNG captures create outliers. This
+supports similar performance in this scene and does not establish an FPS gain.
+
+Residual aliasing and main-view fallback remain on some boundaries and newly
+exposed surfaces without captured detail. This is not a claim that every ripple
+has been eliminated or that a reused capture equals a fresh full PiP frame.
+The user still needs to assess the remaining motion quality in their gameplay.
+
+Release: `D:\ANTHOLOGY_DEV\releases\Anthology v150 - PiP Contours`
+Player replacements: `D:\ANTHOLOGY_DEV\releases\Anthology v150 - ДЛЯ ИГРОКОВ`
+Evidence: `reports/v150-pip/`
+Before/after from identical GPU inputs: `reports/v150-pip/v149-v150-same-frame.png`
+Backup: `D:\ANTHOLOGY_DEV\backups\v150-20260920-080718`
+Installation verified 51 file hashes across X/A/B;
+9 files changed.
+Live user.ltx and MO2 profile files remained unchanged. No PDB/MAP is shipped.
+
+
+# v151 — PiP walking contours and source-aware cache (2026-09-20)
+
+The user's 08:14:29 recording showed the remaining artifacts during walking
+toward an NPC. The isolated probe now moves forward, backward and sideways,
+instead of assessing only a stationary viewpoint and small mouse rotations.
+
+Correction to the v150 runtime assessment: replacing shader files did NOT
+invalidate the generated bytecode. The cache CRC validated bytecode integrity,
+not source freshness. A new GPU readback matched v149 (two rounding-sensitive
+validity pixels; mean UV error 3.9e-9), while replaying the installed v150 source
+differed at 187,210 validity pixels. Thus the v150 file/hash and offline tests
+were valid, but its runtime/performance comparison had continued running the
+old producer. Do not reuse that comparison as proof of executing v150.
+
+The DX11 compiler now prefixes only the self-contained svp_motion_map generated
+cache key with a checksum of its actual source. Other shader caches remain
+unchanged. xrCore uses unfinalized CRC32C on SSE4.2 CPUs, not zlib CRC32.
+The final source produced runtime key 7b493a22. Actual GPU output matches its
+offline replay with zero validity mismatches and mean UV error 4.08e-9.
+
+At surface boundaries, a valid coarse-background result no longer short-circuits
+testing the detailed foreground layer. Depth/owner-compatible candidates resolve
+the nearest surface. The extra work is restricted to main-view owner/depth
+boundaries; interior pixels keep the short path. Capture frequency, simulation,
+RGB sampling, sharpness and render dimensions are unchanged.
+
+Validation: three producer compile variants, the full analytical GPU suite
+(including 32 advection steps and coplanar disocclusion), and a new magnified
+walking silhouette regression. That regression found 576 incorrect background
+selections in v150 and zero in v151, with zero foreground leaks. Four actual
+walking GPU captures had no accepted addresses from a different captured owner.
+Both production DX11 and AVX completed the walking probe with exit 0; DX11 also
+saved and loaded pip151_roundtrip. One PRIVATE GPU-readback run faulted after
+device teardown; it is retained in evidence and is not the production binary.
+
+The paired AVX runs at interval 4 measured median window p50
+21.151 ms before and 19.745 ms after;
+median p95 was 32.550 and 30.211 ms.
+Only two stable 256-present windows per run were available. AI/weather/camera
+cuts vary; PNG screenshots cause outliers. This does not establish a universal
+FPS gain, but no slowdown was observed in this walking comparison.
+
+Walking silhouettes are visibly less blocky. Fine aliasing and temporary
+main-image fallback remain on newly visible surfaces absent from the capture.
+This update does not promise full freshly rendered PiP quality on every frame.
+
+Changed production source: r4.cpp plus r3/r4 svp_motion_map.ps. Of 937 archived
+resources, 935 are byte-identical to v150. Seasons, SSS, leaf colours, producer
+motion masks, MCM and other engine fixes are preserved. Both EXEs are new and
+must be installed with the shaders. No PDB/MAP is distributed.
+
+Release: `D:\ANTHOLOGY_DEV\releases\Anthology v151 - PiP Walking`
+Player replacements: `D:\ANTHOLOGY_DEV\releases\Anthology v151 - ДЛЯ ИГРОКОВ`
+Evidence: `reports/v151-pip/`
+Same-input walking comparison: `reports/v151-pip/walking-before-after.png`
+Backup: `D:\ANTHOLOGY_DEV\backups\v151-20260920-090901`
+Verified 51 destination hashes on X/A/B;
+15 files changed.
+Live user.ltx and MO2 profile modlist hashes are unchanged.
+

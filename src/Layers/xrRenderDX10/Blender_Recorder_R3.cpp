@@ -268,6 +268,8 @@ void CBlender_Compile::r_ComputePass(LPCSTR cs)
 
 void CBlender_Compile::r_End()
 {
+	// Optional binding: only PiP materials declaring this resource consume it.
+	r_dx10Texture("s_pip_motion_map", "$user$svp_motion_current");
 	SetMapping();
 	DEV->_CreateConstantTable(ctable, &dest.constants);
 	DEV->_CreateState(RS.GetContainer(), &dest.state);

@@ -14,6 +14,8 @@
 #include "../../xrEngine/environment.h"
 
 #include "dxRenderDeviceRender.h"
+#include "xrRender_console.h"
+#include "../../xrCore/RuntimeSeason.h"
 
 // matrices
 #define	BIND_DECLARE(xf)	\
@@ -1021,6 +1023,14 @@ static class ssfx_florafixes_2 : public R_constant_setup
 	}
 }    ssfx_florafixes_2;
 
+static class anthology_flora_style : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, static_cast<float>(anthology::runtime_season()), 0.0f, 0.0f, 0.0f);
+	}
+} anthology_flora_style;
+
 static class ssfx_wind_grass : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
@@ -1186,6 +1196,115 @@ static class scope_svp_active : public R_constant_setup
 	}
 } scope_svp_active;
 
+static class scope_lense_color_setup : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, ps_scope_lense_brightness, ps_scope_lense_contrast,
+			ps_scope_lense_saturation, ps_scope_lense_gamma);
+	}
+} scope_lense_color;
+
+static class scope_lense_surface_setup : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, ps_scope_lense_grain, ps_scope_lense_dirt,
+			float(ps_scope_lense_tint), ps_scope_lense_tint_intensity);
+	}
+} scope_lense_surface;
+
+static class scope_lense_detail_setup : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, ps_scope_lense_sharpness, 0.f, 0.f, 0.f);
+	}
+} scope_lense_detail;
+
+static class scope_lense_motion_setup : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+#ifdef USE_DX11
+		const bool ready = RImplementation.Target && RImplementation.Target->svp_motion_ready();
+		RCache.set_c(C, ready ? 1.f : 0.f, 0.02f, 0.005f, 4.f);
+#else
+		RCache.set_c(C, 0.f, 0.f, 0.f, 0.f);
+#endif
+	}
+} scope_lense_motion;
+
+static class pip_motion_history_setup : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		RCache.set_c(C, 0.f, 0.f, 0.f, 0.f);
+	}
+} pip_motion_history;
+
+static Fvector2 main_view_jitter_ndc();
+
+static class scope_lense_main_view_setup : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		float tangent = 0.f;
+		if (g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
+			tangent = tanf(deg2rad(clampr(g_pGamePersistent->m_pGShaderConstants->hud_params.y, 1.f, 170.f)) * 0.5f);
+		// Reticle materials run under CHudInitializer: Device.mProject is HUD FOV.
+		const Fmatrix& projection = Device.mProject_saved;
+		const Fvector2 jitter = main_view_jitter_ndc();
+		RCache.set_c(C, projection._11 * tangent / _max(0.01f, Device.fASPECT),
+			projection._22 * tangent, 0.5f + (projection._31 + jitter.x) * 0.5f,
+			0.5f - (projection._32 + jitter.y) * 0.5f);
+	}
+} scope_lense_main_view;
+
+static class scope_lense_imaging_setup : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		const bool active = Device.m_SecondViewport.IsSVPActive();
+		const bool nvg = active && ((ps_scope_lense_allow_nvg && ps_scope_lense_head_nvg_active) || ps_r2_nightvision > 0);
+		bool separate_color_source = false;
+#ifdef USE_DX11
+		// The legacy MSAA reticle copy is not a resolved main-color source.
+		separate_color_source = RImplementation.o.dx11_hdr10 || RImplementation.o.dx10_msaa;
+#endif
+		RCache.set_c(C, nvg ? 1.f : 0.f,
+			active && (Device.m_SecondViewport.IsSVPThermal() || ps_r2_heatvision > 0) ? 1.f : 0.f,
+			separate_color_source ? 1.f : 0.f, 0.f);
+	}
+} scope_lense_imaging;
+
+static class scope_lense_reproject_setup : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		Fmatrix reprojection;
+		reprojection.identity();
+		if (ps_scope_lense_temporal_mode && Device.m_SecondViewport.IsSVPActive() &&
+			Device.m_SecondViewport.IsSVPTextureReady() && g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants)
+		{
+			const float fov = clampr(g_pGamePersistent->m_pGShaderConstants->hud_params.y, 1.f, 170.f);
+			Fmatrix ray, inverseView, capturedView, rotation, worldRay;
+			ray.identity();
+			ray._22 = tanf(deg2rad(fov) * 0.5f);
+			ray._11 = ray._22 / _max(0.01f, Device.fASPECT);
+			ray._44 = 0.f; // A direction at infinity: translation cannot warp the lens.
+			inverseView.invert(Device.mView_saved);
+			inverseView.c.set(0.f, 0.f, 0.f);
+			capturedView = Device.m_SecondViewport.GetSVPCapturedView();
+			capturedView.c.set(0.f, 0.f, 0.f);
+			rotation.mul(capturedView, inverseView);
+			worldRay.mul(rotation, ray);
+			reprojection.mul(Device.m_SecondViewport.GetSVPCapturedProjection(), worldRay);
+		}
+		RCache.set_c(C, reprojection);
+	}
+} scope_lense_reproject;
+
 static class scope_lense_quality_setup : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
@@ -1243,56 +1362,70 @@ static class ssfx_pom : public R_constant_setup
 	}
 }    ssfx_pom;
 
+static Fvector2 main_view_jitter_ndc()
+{
+	float JitterX = 0;
+	float JitterY = 0;
+
+#if defined(USE_DX11)
+	const bool svp_frame = Device.m_SecondViewport.IsSVPFrame();
+	if (g_main_temporal_upscaler_active && !svp_frame)
+	{
+		const float renderWidth = _max(1.f, g_main_taa_render_size.x);
+		const float renderHeight = _max(1.f, g_main_taa_render_size.y);
+		// Vendor APIs express jitter in render pixels, while the vertex shader
+		// adds this constant in clip space. Convert pixels to NDC exactly and
+		// account for the opposite screen-space Y direction. The raw pixel
+		// values are still passed unchanged to DLSS/FSR.
+		JitterX = 2.f * g_main_taa_jitter_pixels.x / renderWidth;
+		JitterY = -2.f * g_main_taa_jitter_pixels.y / renderHeight;
+	}
+	else if (ps_ssfx_taa.x > 0 && RImplementation.o.ssfx_taa && !svp_frame)
+	{
+		static Fvector2 TAA_Offset[4] =
+		{
+			{  0.0f, -1.0f },
+			{ -1.0f,  0.0f },
+			{  1.0f,  0.0f },
+			{  0.0f,  1.0f }
+		};
+
+		static u32 main_last_frame = u32(-1);
+		static u32 main_sequence = 0;
+		if (main_last_frame != Device.dwFrame)
+		{
+			main_last_frame = Device.dwFrame;
+			++main_sequence;
+		}
+
+		JitterX = TAA_Offset[main_sequence % 4].x / Device.dwWidth;
+		JitterY = TAA_Offset[main_sequence % 4].y / Device.dwHeight;
+	}
+
+	if (!svp_frame && !g_main_temporal_upscaler_active)
+		g_main_taa_jitter_pixels.set(JitterX * Device.dwWidth * ps_ssfx_taa.y,
+			JitterY * Device.dwHeight * ps_ssfx_taa.y);
+#endif
+
+	const float jitterScale = g_main_temporal_upscaler_active ? 1.f : ps_ssfx_taa.y;
+	Fvector2 result;
+	result.set(JitterX * jitterScale, JitterY * jitterScale);
+	return result;
+}
+
+#ifdef USE_DX11
+Fvector2 GetPipMainViewJitterNdc()
+{
+	return main_view_jitter_ndc();
+}
+#endif
+
 static class ssfx_jitter : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
 	{
-		float JitterX = 0;
-		float JitterY = 0;
-
-#if defined(USE_DX11)
-		const bool svp_frame = Device.m_SecondViewport.IsSVPFrame();
-		if (g_main_temporal_upscaler_active && !svp_frame)
-		{
-			const float renderWidth = _max(1.f, g_main_taa_render_size.x);
-			const float renderHeight = _max(1.f, g_main_taa_render_size.y);
-			// Vendor APIs express jitter in render pixels, while the vertex shader
-			// adds this constant in clip space. Convert pixels to NDC exactly and
-			// account for the opposite screen-space Y direction. The raw pixel
-			// values are still passed unchanged to DLSS/FSR.
-			JitterX = 2.f * g_main_taa_jitter_pixels.x / renderWidth;
-			JitterY = -2.f * g_main_taa_jitter_pixels.y / renderHeight;
-		}
-		else if (ps_ssfx_taa.x > 0 && RImplementation.o.ssfx_taa && !svp_frame)
-		{
-			static Fvector2 TAA_Offset[4] = 
-			{
-				{  0.0f, -1.0f },
-				{ -1.0f,  0.0f },
-				{  1.0f,  0.0f },
-				{  0.0f,  1.0f }
-			};
-
-			static u32 main_last_frame = u32(-1);
-			static u32 main_sequence = 0;
-			if (main_last_frame != Device.dwFrame)
-			{
-				main_last_frame = Device.dwFrame;
-				++main_sequence;
-			}
-
-			JitterX = TAA_Offset[main_sequence % 4].x / Device.dwWidth;
-			JitterY = TAA_Offset[main_sequence % 4].y / Device.dwHeight;
-		}
-
-		if (!svp_frame && !g_main_temporal_upscaler_active)
-			g_main_taa_jitter_pixels.set(JitterX * Device.dwWidth * ps_ssfx_taa.y,
-				JitterY * Device.dwHeight * ps_ssfx_taa.y);
-#endif
-
-		const float jitterScale = g_main_temporal_upscaler_active ? 1.f : ps_ssfx_taa.y;
-		RCache.set_c(C, JitterX * jitterScale, JitterY * jitterScale, ps_ssfx_taa.x, ps_ssfx_taa.w);
-
+		const Fvector2 jitter = main_view_jitter_ndc();
+		RCache.set_c(C, jitter.x, jitter.y, ps_ssfx_taa.x, ps_ssfx_taa.w);
 	}
 }    ssfx_jitter;
 
@@ -1544,7 +1677,15 @@ void CBlender_Compile::SetMapping()
 	r_Constant("m_script_params", &binder_script_params); //--#SM+#--
 	r_Constant("m_blender_mode", &binder_blend_mode);	//--#SM+#--
 	r_Constant("scope_svp", &scope_svp_active);
+	r_Constant("scope_lense_motion", &scope_lense_motion);
+	r_Constant("pip_motion_history", &pip_motion_history);
 	r_Constant("scope_lense_quality", &scope_lense_quality);
+	r_Constant("scope_lense_color", &scope_lense_color);
+	r_Constant("scope_lense_surface", &scope_lense_surface);
+	r_Constant("scope_lense_detail", &scope_lense_detail);
+	r_Constant("scope_lense_main_view", &scope_lense_main_view);
+	r_Constant("scope_lense_imaging", &scope_lense_imaging);
+	r_Constant("scope_lense_reproject", &scope_lense_reproject);
 	
 	// Rain
 	r_Constant("rain_params", &binder_rain_params);
@@ -1607,6 +1748,7 @@ void CBlender_Compile::SetMapping()
 	r_Constant("ssfx_gloss", &ssfx_gloss);
 	r_Constant("ssfx_florafixes_1", &ssfx_florafixes_1);
 	r_Constant("ssfx_florafixes_2", &ssfx_florafixes_2);
+	r_Constant("anthology_flora_style", &anthology_flora_style);
 	r_Constant("ssfx_wsetup_grass", &ssfx_wind_grass);
 	r_Constant("ssfx_wsetup_trees", &ssfx_wind_trees);
 	r_Constant("ssfx_lut", &ssfx_lut);

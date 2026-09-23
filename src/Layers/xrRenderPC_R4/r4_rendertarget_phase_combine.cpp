@@ -103,14 +103,14 @@ void CRenderTarget::phase_combine()
 		HW.pContext->ClearRenderTargetView(rt_ssfx_temp->pRT, NeutralAOIL);
 		HW.pContext->ClearRenderTargetView(rt_ssfx_temp2->pRT, NeutralAOIL);
 
-		if (!Device.m_SecondViewport.IsSVPFrame())
+		// Contact shading belongs to both cameras; PiP does not update main AO history.
+		if (RImplementation.o.ssfx_ao && ps_ssfx_ao.y > 0)
 		{
-			if (RImplementation.o.ssfx_ao && ps_ssfx_ao.y > 0)
-			{
-				ssfx_PrevPos_Requiered = true;
-				phase_ssfx_ao(); // [SSFX] - New AO Phase
-			}
-
+			ssfx_PrevPos_Requiered |= !svp_frame;
+			phase_ssfx_ao();
+		}
+		if (!svp_frame)
+		{
 			if (RImplementation.o.ssfx_il && ps_ssfx_il.y > 0)
 			{
 				ssfx_PrevPos_Requiered = true;
@@ -326,9 +326,9 @@ void CRenderTarget::phase_combine()
 	else
 		HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0_r->pTexture->surface_get());
 
-	if (RImplementation.o.ssfx_ssr && !Device.m_SecondViewport.IsSVPFrame())
+	if (RImplementation.o.ssfx_ssr)
 	{
-		ssfx_PrevPos_Requiered = true;
+		ssfx_PrevPos_Requiered |= !svp_frame;
 		phase_ssfx_ssr(); // [SSFX] - New SSR Phase
 	}
 
@@ -532,6 +532,36 @@ void CRenderTarget::phase_combine()
 	{
 		phase_ssfx_motion_blur();
 	}
+
+	// Cache ordinary optics at the exact stage used by the main reticle input.
+	// The pending texture stays outside the scaled PiP render-target bank.
+	if (svp_frame && Device.m_SecondViewport.isCamReady)
+	{
+		phase_svp_scene();
+		if (m_svpSceneFrame == Device.dwFrame && svp_scene_capture_required() &&
+			rt_secondVP_scene && rt_secondVP_scene->valid())
+		{
+			// RenderToTarget publishes this scene texture. The display passes below
+			// would render a second image that is discarded for ordinary optics.
+			// Reticle drawing normally drains this queue even on a lens frame.
+			RImplementation.GMBase.RGraph.mapScopeHUDSorted.clear();
+			RCache.set_xform_world(Fidentity);
+			u_setrt(Device.dwWidth, Device.dwHeight, HW.pBaseRT, nullptr, nullptr, HW.pBaseZB);
+			RImplementation.rmNormal();
+			RCache.set_Stencil(FALSE);
+#ifdef DEBUG
+			RCache.set_CullMode(CULL_CCW);
+			dbg_spheres.clear();
+			dbg_lines.clear();
+			dbg_planes.clear();
+#endif
+			return;
+		}
+	}
+
+	// Update addresses before the reticle overwrites main depth and motion MRTs.
+	if (!svp_frame)
+		phase_svp_motion();
 
 	// HeatVision reconstructs the full frame and does not sample the already
 	// composited reticle. On a presented head-thermal frame defer the single

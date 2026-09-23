@@ -1,0 +1,12 @@
+#include "common.h"
+Texture2D s_pip_flare_mask;
+float4 pip_flare_mask;
+float4 main(p_TL I, float4 pixel : SV_Position) : SV_Target
+{
+    if (pip_flare_mask.x > 0.5)
+    {
+        float4 mask = s_pip_flare_mask.SampleLevel(smp_nofilter, pixel.xy * pip_flare_mask.yz, 0);
+        if (all(mask == float4(0, 0, 0, 1))) discard;
+    }
+    return s_base.Sample(smp_base, I.Tex0) * I.Color;
+}

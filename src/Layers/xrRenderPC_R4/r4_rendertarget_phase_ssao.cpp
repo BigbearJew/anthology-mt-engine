@@ -207,7 +207,8 @@ void CRenderTarget::phase_ssfx_ao()
 	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 
 	// Save AO frame
-	HW.pContext->CopyResource(rt_ssfx_ao->pTexture->surface_get(), rt_ssfx_temp->pTexture->surface_get());
+	if (!Device.m_SecondViewport.IsSVPFrame())
+		HW.pContext->CopyResource(rt_ssfx_ao->pTexture->surface_get(), rt_ssfx_temp->pTexture->surface_get());
 
 	//scale_X = w / (ScaleFactor * 2.0f);
 	//scale_Y = h / (ScaleFactor * 2.0f);

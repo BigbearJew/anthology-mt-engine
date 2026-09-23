@@ -110,7 +110,7 @@ void CAI_Crow::init()
 	fIdleSoundDelta = 10.f;
 	fIdleSoundTime = fIdleSoundDelta;
 	bPlayDeathIdle = false;
-	o_workload_frame = 0;
+	o_workload_time = 0;
 	o_workload_rframe = 0;
 }
 
@@ -157,7 +157,7 @@ BOOL CAI_Crow::net_Spawn(CSE_Abstract* DC)
 
     renderable.visual->MarkIgnoreOptimization(TRUE);
 
-	o_workload_frame = 0;
+	o_workload_time = 0;
 	o_workload_rframe = 0;
 
 	if (GetfHealth() > 0)
@@ -311,8 +311,8 @@ void CAI_Crow::Die(CObject* who)
 
 void CAI_Crow::UpdateWorkload(float fdt)
 {
-	if (o_workload_frame == Device.dwFrame) return;
-	o_workload_frame = Device.dwFrame;
+	if (o_workload_time == Device.dwTimeGlobal) return;
+	o_workload_time = Device.dwTimeGlobal;
 	switch (st_current)
 	{
 	case eFlyIdle:

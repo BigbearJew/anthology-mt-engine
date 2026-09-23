@@ -122,6 +122,8 @@ public:
 	BOOL update_culling(float dt);
 	void update_environment(float dt);
 	void rewind();
+    void refresh_season_source(bool force = false);
+    bool anthology_winter_mode = false;
 	virtual void stop(BOOL bDeffered);
 	void pause(BOOL bVal, int id);
 

@@ -2,6 +2,7 @@
 #include "UpscalerRuntime.h"
 #include "../xrRender/xrRender_console.h"
 #include "../../xrEngine/igame_persistent.h"
+#include "../../xrEngine/EngineThreading.h"
 
 CAnthologyUpscalerRuntime g_AnthologyUpscaler;
 
@@ -95,6 +96,8 @@ bool CAnthologyUpscalerRuntime::ProbeAndResolveMode()
 
 bool CAnthologyUpscalerRuntime::Initialize(u32 renderWidth, u32 renderHeight, u32 displayWidth, u32 displayHeight)
 {
+	ResetTemporalState();
+	ReleaseGpuProfile();
 	// A failed/recreated backend must never leave its automatic sampler bias
 	// behind. The user-owned r__tf_mipbias value itself is never modified.
 	SetTemporalUpscalerMipBias(0.0f, false);
@@ -160,17 +163,25 @@ bool CAnthologyUpscalerRuntime::Initialize(u32 renderWidth, u32 renderHeight, u3
 
 void CAnthologyUpscalerRuntime::UpdateJitter(u32 frameIndex)
 {
-	if (!IsEnabled() || !m_renderWidth || !m_displayWidth)
+	if (!IsEnabled() || !m_renderWidth || !m_displayWidth || Device.m_SecondViewport.IsSVPFrame())
 	{
-		g_main_taa_jitter_pixels.set(0.f, 0.f);
+		if (!Device.m_SecondViewport.IsSVPFrame())
+			g_main_taa_jitter_pixels.set(0.f, 0.f);
 		return;
 	}
+	if (m_jitterFrame == frameIndex)
+		return;
+	m_jitterFrame = frameIndex;
 
 	const int phaseCount = _max(1, ffxFsr3UpscalerGetJitterPhaseCount(
 		int(m_renderWidth), int(m_displayWidth)));
 	float jitterX = 0.f;
 	float jitterY = 0.f;
-	if (ffxFsr3UpscalerGetJitterOffset(&jitterX, &jitterY, int(frameIndex % phaseCount), phaseCount) != FFX_OK)
+	// Device frames include lens captures. Indexing Halton with dwFrame skips
+	// half of even-length sequences while ADS alternates main and SVP renders.
+	const int jitterPhase = int(m_jitterPhase % u32(phaseCount));
+	m_jitterPhase = u32((jitterPhase + 1) % phaseCount);
+	if (ffxFsr3UpscalerGetJitterOffset(&jitterX, &jitterY, jitterPhase, phaseCount) != FFX_OK)
 	{
 		jitterX = 0.f;
 		jitterY = 0.f;
@@ -181,8 +192,29 @@ void CAnthologyUpscalerRuntime::UpdateJitter(u32 frameIndex)
 bool CAnthologyUpscalerRuntime::Dispatch(ID3D11Resource* color, ID3D11Resource* motion,
 	ID3D11Resource* depth, ID3D11Resource* output, bool resetHistory)
 {
+	// Motion history refers to the last main render. A failed resolve, loading,
+	// menu gap or a camera cut cannot reuse a vendor history from an older view.
+	const u32 frameGap = Device.dwFrame - m_lastDispatchFrame;
+	const bool cameraCut = m_historyValid &&
+		(Device.vCameraPosition.distance_to_sqr(m_previousCameraPosition) > 25.f ||
+		 Device.vCameraDirection.dotproduct(m_previousCameraDirection) < 0.5f ||
+		 fabsf(Device.fFOV - m_previousFov) > 10.f);
+	resetHistory = resetHistory || !m_historyValid || frameGap > 2 || cameraCut;
+	const float frameTimeMs = !resetHistory ?
+		clampr(float(Device.dwTimeContinual - m_lastDispatchTime), 1.f, 250.f) :
+		clampr(Device.fTimeDelta * 1000.f, 1.f, 250.f);
+
 	auto finishDispatch = [this, color, motion, depth, output](bool success)
 	{
+		m_historyValid = success && Device.dwPrecacheFrame == 0;
+		if (success)
+		{
+			m_lastDispatchFrame = Device.dwFrame;
+			m_lastDispatchTime = Device.dwTimeContinual;
+			m_previousCameraPosition.set(Device.vCameraPosition);
+			m_previousCameraDirection.set(Device.vCameraDirection);
+			m_previousFov = Device.fFOV;
+		}
 		if (success && !m_dispatchLogged)
 		{
 			auto textureFormat = [](ID3D11Resource* resource)
@@ -220,8 +252,11 @@ bool CAnthologyUpscalerRuntime::Dispatch(ID3D11Resource* color, ID3D11Resource* 
 		// erased much of the GPU saving and reprocessed an already reconstructed image.
 		params.sharpening = ps_r4_upscaler_sharpness > EPS;
 		params.sharpness = clampr(ps_r4_upscaler_sharpness, 0.f, 1.f);
-        params.frameTimeMs = _max(1.f, Device.fTimeDelta * 1000.f);
-        params.nearPlane = VIEWPORT_NEAR;
+		params.frameTimeMs = frameTimeMs;
+		// The active camera may override its near plane. Reconstruct the same
+		// finite, forward-Z projection that authored the exported hardware depth.
+		const float projectionNear = -Device.mProject._43 / Device.mProject._33;
+		params.nearPlane = projectionNear > EPS_S ? projectionNear : VIEWPORT_NEAR;
         params.farPlane = g_pGamePersistent && g_pGamePersistent->Environment().CurrentEnv ?
             g_pGamePersistent->Environment().CurrentEnv->far_plane : 500.f;
         params.verticalFov = deg2rad(Device.fFOV);
@@ -239,6 +274,7 @@ bool CAnthologyUpscalerRuntime::Dispatch(ID3D11Resource* color, ID3D11Resource* 
         params.renderWidth = m_renderWidth;
         params.renderHeight = m_renderHeight;
         params.reset = resetHistory;
+		params.frameTimeMs = frameTimeMs;
 		params.jitterX = g_main_taa_jitter_pixels.x;
 		params.jitterY = g_main_taa_jitter_pixels.y;
 		return finishDispatch(m_dlss.Draw(params));
@@ -248,6 +284,8 @@ bool CAnthologyUpscalerRuntime::Dispatch(ID3D11Resource* color, ID3D11Resource* 
 
 void CAnthologyUpscalerRuntime::Shutdown()
 {
+	ReleaseGpuProfile();
+	ResetTemporalState();
 	SetTemporalUpscalerMipBias(0.0f, false);
     m_fsr3.Destroy();
     m_dlss.Shutdown();
@@ -255,4 +293,153 @@ void CAnthologyUpscalerRuntime::Shutdown()
     m_renderWidth = m_renderHeight = m_displayWidth = m_displayHeight = 0;
 	m_dispatchLogged = false;
 	g_main_taa_jitter_pixels.set(0.f, 0.f);
+}
+
+void CAnthologyUpscalerRuntime::ResetTemporalState()
+{
+	m_jitterFrame = u32(-1);
+	m_jitterPhase = 0;
+	m_lastDispatchFrame = m_lastDispatchTime = 0;
+	m_historyValid = false;
+}
+
+void CAnthologyUpscalerRuntime::ReleaseGpuProfile()
+{
+	for (GpuProfileSample& sample : m_gpuSamples)
+	{
+		_RELEASE(sample.disjoint);
+		for (ID3D11Query*& timestamp : sample.timestamps)
+			_RELEASE(timestamp);
+		sample.pending = false;
+		sample.temporal = false;
+	}
+	m_gpuActiveSample = -1;
+	m_gpuProfileUnavailable = false;
+	m_gpuProfileCount = 0;
+	m_gpuPrepareMs = m_gpuVendorMs = m_gpuSceneMs = m_gpuMaxMs = 0.0;
+}
+
+void CAnthologyUpscalerRuntime::BeginSceneGpuProfile()
+{
+	m_gpuActiveSample = -1;
+	if (!mt_FrameProfile || !mt_FrameProfileDetailed || Device.dwPrecacheFrame ||
+		Device.m_SecondViewport.IsSVPFrame() || m_gpuProfileUnavailable)
+		return;
+
+	for (GpuProfileSample& sample : m_gpuSamples)
+	{
+		if (!sample.pending)
+			continue;
+		D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint = {};
+		HRESULT ready = HW.pContext->GetData(sample.disjoint, &disjoint, sizeof(disjoint), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+		if (ready == S_FALSE)
+			continue;
+		if (FAILED(ready) || disjoint.Disjoint || !disjoint.Frequency)
+		{
+			sample.pending = false;
+			continue;
+		}
+		UINT64 times[5] = {};
+		bool complete = true;
+		for (u32 i = 0; i < _countof(times); ++i)
+		{
+			if (!sample.temporal && i > 0 && i < 4)
+				continue;
+			ready = HW.pContext->GetData(sample.timestamps[i], &times[i], sizeof(times[i]), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+			if (ready != S_OK)
+			{
+				complete = false;
+				if (FAILED(ready))
+					sample.pending = false;
+				break;
+			}
+		}
+		if (!complete)
+			continue;
+		sample.pending = false;
+		if (times[4] < times[0] || (sample.temporal &&
+			(times[4] < times[3] || times[3] < times[2] || times[2] < times[1] || times[1] < times[0])))
+			continue;
+		const double toMs = 1000.0 / double(disjoint.Frequency);
+		if (sample.temporal)
+		{
+			m_gpuPrepareMs += double(times[2] - times[1]) * toMs;
+			m_gpuVendorMs += double(times[3] - times[2]) * toMs;
+		}
+		m_gpuSceneMs += double(times[4] - times[0]) * toMs;
+		m_gpuMaxMs = std::max(m_gpuMaxMs, double(times[4] - times[0]) * toMs);
+		if (++m_gpuProfileCount >= 120)
+		{
+			Msg("* [render-gpu/profile] mode=%s samples=%u render=%ux%u display=%ux%u main=%.3f max=%.3f prepare=%.3f vendor=%.3f upscale=%.3f ms; asynchronous GPU timestamps",
+				!IsEnabled() ? "native" : m_mode == AnthologyUpscalerFSR3 ? "FSR3" : "DLSS",
+				m_gpuProfileCount, IsEnabled() ? m_renderWidth : Device.dwWidth,
+				IsEnabled() ? m_renderHeight : Device.dwHeight, Device.dwWidth, Device.dwHeight,
+				m_gpuSceneMs / m_gpuProfileCount, m_gpuMaxMs,
+				m_gpuPrepareMs / m_gpuProfileCount, m_gpuVendorMs / m_gpuProfileCount,
+				(m_gpuPrepareMs + m_gpuVendorMs) / m_gpuProfileCount);
+			m_gpuProfileCount = 0;
+			m_gpuPrepareMs = m_gpuVendorMs = m_gpuSceneMs = m_gpuMaxMs = 0.0;
+		}
+	}
+
+	for (u32 i = 0; i < _countof(m_gpuSamples); ++i)
+	{
+		GpuProfileSample& sample = m_gpuSamples[i];
+		if (sample.pending)
+			continue;
+		D3D11_QUERY_DESC description = {D3D11_QUERY_TIMESTAMP_DISJOINT, 0};
+		HRESULT result = S_OK;
+		if (!sample.disjoint)
+			result = HW.pDevice->CreateQuery(&description, &sample.disjoint);
+		description.Query = D3D11_QUERY_TIMESTAMP;
+		for (ID3D11Query*& timestamp : sample.timestamps)
+		{
+			if (SUCCEEDED(result) && !timestamp)
+				result = HW.pDevice->CreateQuery(&description, &timestamp);
+		}
+		if (FAILED(result))
+		{
+			m_gpuProfileUnavailable = true;
+			Msg("! [upscaler/gpu] timestamp queries unavailable: 0x%08x", result);
+			return;
+		}
+		m_gpuActiveSample = int(i);
+		sample.temporal = false;
+		HW.pContext->Begin(sample.disjoint);
+		HW.pContext->End(sample.timestamps[0]);
+		return;
+	}
+	// Every slot is pending: skip this measurement without waiting on the GPU.
+}
+
+void CAnthologyUpscalerRuntime::BeginGpuProfile()
+{
+	if (m_gpuActiveSample < 0)
+		return;
+	GpuProfileSample& sample = m_gpuSamples[m_gpuActiveSample];
+	sample.temporal = true;
+	HW.pContext->End(sample.timestamps[1]);
+}
+
+void CAnthologyUpscalerRuntime::MarkGpuDispatch()
+{
+	if (m_gpuActiveSample >= 0)
+		HW.pContext->End(m_gpuSamples[m_gpuActiveSample].timestamps[2]);
+}
+
+void CAnthologyUpscalerRuntime::EndGpuProfile()
+{
+	if (m_gpuActiveSample >= 0)
+		HW.pContext->End(m_gpuSamples[m_gpuActiveSample].timestamps[3]);
+}
+
+void CAnthologyUpscalerRuntime::EndSceneGpuProfile()
+{
+	if (m_gpuActiveSample < 0)
+		return;
+	GpuProfileSample& sample = m_gpuSamples[m_gpuActiveSample];
+	HW.pContext->End(sample.timestamps[4]);
+	HW.pContext->End(sample.disjoint);
+	sample.pending = true;
+	m_gpuActiveSample = -1;
 }

@@ -29,6 +29,7 @@ public:
         bool reset = false;
         float jitterX = 0.f;
         float jitterY = 0.f;
+		float frameTimeMs = 16.667f;
     };
 
     bool Probe(ID3D11Device* device);

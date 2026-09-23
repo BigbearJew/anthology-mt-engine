@@ -506,12 +506,11 @@ public:
 	virtual ~CRender();
 
 	void addShaderOption(const char* name, const char* value);
-	void clearAllShaderOptions() { m_ShaderOptions.clear(); }
+	void clearAllShaderOptions();
 
 	virtual size_t SectorsCount() { return Sectors.size(); }
 
 private:
-	xr_vector<D3D_SHADER_MACRO> m_ShaderOptions;
 
 protected:
 	virtual void ScreenshotImpl(ScreenshotMode mode, LPCSTR name, CMemoryWriter* memory_writer);

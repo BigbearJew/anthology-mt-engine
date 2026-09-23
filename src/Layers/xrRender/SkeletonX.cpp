@@ -20,6 +20,10 @@
 #include "../../xrEngine/fmesh.h"
 #include "../../xrCPU_Pipe/xrCPU_Pipe.h"
 
+#ifdef USE_DX11
+#include "PipMotionHistory.h"
+#endif
+
 shared_str s_bones_array_const;
 shared_str s_bones_array_prev_const;
 
@@ -67,42 +71,48 @@ void CSkeletonX::_Render(ref_geom& hGeom, u32 vCount, u32 iOffset, u32 pCount)
 	{
 		// SVP uses spatial AA and must not advance the motion history consumed by
 		// the next presented main frame.
-		if (!Device.m_SecondViewport.IsSVPFrame() && Device.dwFrame > Parent->CurrentFrame)
+		if (!Device.m_SecondViewport.IsSVPFrame())
 		{
-			// Save current frame
-			Parent->CurrentFrame = Device.dwFrame;
-
-			// Save prev m_W and save current m_W for the next frame
-			Parent->Matrix_Prev.set(Parent->Matrix_Temp);
-			Parent->Matrix_Temp.set(RCache.xforms.m_w);
-
-			// Save bone matrix to use in the next frame
-			for (u16 b = 0; b < Parent->LL_BoneCount(); b++)
+			const auto historyStep = Parent->motionHistoryEpoch.Begin(Device.mMainRenderSerial);
+			if (historyStep != RenderHistoryEpoch::Step::Same)
 			{
-				CBoneInstance& Bone = Parent->LL_GetBoneInstance(b);
-				Bone.mRenderTransform_prev.set(Bone.mRenderTransform_temp);
-				Bone.mRenderTransform_temp.set(Bone.mRenderTransform);
+				const bool previousValid = historyStep == RenderHistoryEpoch::Step::Advance;
+				// A new/reappearing skeleton has no immediately preceding main pose.
+				Parent->Matrix_Prev.set(previousValid ? Parent->Matrix_Temp : RCache.xforms.m_w);
+				Parent->Matrix_Temp.set(RCache.xforms.m_w);
+				for (u16 b = 0; b < Parent->LL_BoneCount(); b++)
+				{
+					CBoneInstance& Bone = Parent->LL_GetBoneInstance(b);
+					Bone.mRenderTransform_prev.set(previousValid ? Bone.mRenderTransform_temp : Bone.mRenderTransform);
+					Bone.mRenderTransform_temp.set(Bone.mRenderTransform);
+				}
 			}
 		}
 
+		const bool historyInitialized = Parent->motionHistoryEpoch.Initialized();
+		const Fmatrix& previousWorld = historyInitialized ? Parent->Matrix_Prev : RCache.xforms.m_w;
 		// Build previous WV & WVP
 		if (RenderMode == 1)
 		{
 			// RM_SINGLE
 			Fmatrix Bone_Prev;
-			Bone_Prev.mul_43(Parent->Matrix_Prev, Parent->LL_GetBoneInstance(u16(RMS_boneid)).mRenderTransform_prev);
+			const CBoneInstance& bone = Parent->LL_GetBoneInstance(u16(RMS_boneid));
+			Bone_Prev.mul_43(previousWorld, historyInitialized ? bone.mRenderTransform_prev : bone.mRenderTransform);
 			p_WV.mul_43(RCache.xforms.m_v_prev, Bone_Prev);
 			p_WVP.mul(RCache.xforms.m_p_prev, p_WV);
 		}
 		else
 		{
 			// RM_SKINNING_1B ~ RM_SKINNING_4B
-			p_WV.mul_43(RCache.xforms.m_v_prev, Parent->Matrix_Prev);
+			p_WV.mul_43(RCache.xforms.m_v_prev, previousWorld);
 			p_WVP.mul(RCache.xforms.m_p_prev, p_WV);
 		}
 
 		RCache.set_c("m_wvp_prev", p_WVP); // Apply prev matrix
 	}
+	const bool reliable_history = RImplementation.o.ssfx_motionvectors &&
+		Parent->motionHistoryEpoch.PreviousValid() && RenderMode != RM_SKINNING_SOFT;
+	const PipMotionHistoryScope motion_scope(reliable_history);
 #endif
 
 	RCache.stat.r.s_dynamic.add(vCount);
@@ -151,7 +161,8 @@ void CSkeletonX::_Render(ref_geom& hGeom, u32 vCount, u32 iOffset, u32 pCount)
 						if (RImplementation.o.ssfx_motionvectors)
 						{
 							// Save previous transform
-							Fmatrix& Mprev = Parent->LL_GetBoneInstance(u16(mid)).mRenderTransform_prev;
+							const Fmatrix& Mprev = Parent->motionHistoryEpoch.Initialized()
+								? Parent->LL_GetBoneInstance(u16(mid)).mRenderTransform_prev : M;
 							RCache.set_ca(&*array_prev, id + 0, Mprev._11, Mprev._21, Mprev._31, Mprev._41);
 							RCache.set_ca(&*array_prev, id + 1, Mprev._12, Mprev._22, Mprev._32, Mprev._42);
 							RCache.set_ca(&*array_prev, id + 2, Mprev._13, Mprev._23, Mprev._33, Mprev._43);

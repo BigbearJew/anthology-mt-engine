@@ -1809,6 +1809,10 @@ void CLevel::OnRender()
 		Render->RenderToTarget(Render->rtSVP);
 		Device.m_SecondViewport.MarkSVPTextureReady();
 	}
+	// The hidden lens image is complete. Screen UI/reshade are discarded here;
+	// MT UI also belongs to the main simulation tick, not this render-only pass.
+	if (Device.m_SecondViewport.IsSVPFrame())
+		return;
 
 	if (use_reshade)
 		render_reshade_effects();

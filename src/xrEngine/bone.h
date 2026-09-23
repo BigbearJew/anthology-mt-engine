@@ -599,6 +599,8 @@ IC void CBoneInstance::construct()
 	mTransform.identity();
 	mTransformHidden.identity();
 	mRenderTransform.identity();
+	mRenderTransform_prev.identity();
+	mRenderTransform_temp.identity();
 	Callback = nullptr;
 	Callback_Param = nullptr;
 	Callback_overwrite = false;

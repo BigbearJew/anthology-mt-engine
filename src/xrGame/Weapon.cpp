@@ -3647,11 +3647,13 @@ void CWeapon::UpdateSecondVP()
 		// Do not query IsSVPFrame here: on a reactivation frame the viewport still
 		// carries last frame's inactive state until SetSVPActive below. The cadence
 		// itself is already final, so derive capture readiness directly.
+		const bool temporal_reuse = ps_scope_lense_temporal_mode != 0;
 		const bool capture_due = Device.dwFrame % effective_frame_delay == 0;
-		const bool advance_lens = !IsSecondVPDynamicLensZoom() || capture_due;
+		const bool advance_lens = temporal_reuse || !IsSecondVPDynamicLensZoom() || capture_due;
 		if (advance_lens)
 		{
-			const float frame_scale = IsSecondVPDynamicLensZoom() ? Device.m_SecondViewport.GetSVPFrameDelay() : 1.0f;
+			const float frame_scale = !temporal_reuse && IsSecondVPDynamicLensZoom() ?
+				Device.m_SecondViewport.GetSVPFrameDelay() : 1.0f;
 			const float blend = clampr(Device.fTimeDelta * 10.f * frame_scale, 0.0f, 0.35f);
 			m_zoom_params.m_fSecondVPCurrentFov += (target_fov - m_zoom_params.m_fSecondVPCurrentFov) * blend;
 			m_zoom_params.m_fSecondVPRenderZoomFactor +=

@@ -1,0 +1,31 @@
+// Capture immutable linear depth in the same UV domain/epoch as PiP RGB.
+// The production caller gates this path to single-sample ordinary SDR optics.
+Texture2D<float4> s_pip_capture_position;
+Texture2D<float4> s_pip_capture_motion;
+
+float pip_capture_motion_owner(float encoded)
+{
+    if (!isfinite(encoded) || encoded >= 2.0) return 0.0;
+    if (encoded >= 0.0 || encoded < -0.5) return 1.0;
+    return encoded > -0.5 && encoded <= -0.00006103515625 ? encoded : 0.0;
+}
+
+struct pip_capture_output
+{
+    float depth : SV_Target0;
+    float owner : SV_Target1;
+};
+
+pip_capture_output main(float4 position : SV_Position, float2 uv : TEXCOORD0)
+{
+    pip_capture_output result;
+    uint width, height;
+    s_pip_capture_position.GetDimensions(width, height);
+    uint2 pixel = min(uint2(uv * float2(width, height)), uint2(width - 1, height - 1));
+    float depth = s_pip_capture_position.Load(int3(pixel, 0)).z;
+    float4 motion = s_pip_capture_motion.Load(int3(pixel, 0));
+    result.depth = isfinite(depth) && depth > 0.01 && depth < 10000.0 ? depth : 0.0;
+    result.owner = result.depth > 0.0 && isfinite(motion.z) && motion.z <= 0.5 ?
+        pip_capture_motion_owner(motion.w) : 0.0;
+    return result;
+}

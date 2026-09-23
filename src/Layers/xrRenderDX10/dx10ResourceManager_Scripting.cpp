@@ -15,6 +15,7 @@
 #include	"luabind/return_reference_to_policy.hpp"
 
 #include	"../xrRender/dxRenderDeviceRender.h"
+#include "../xrRender/uber_deffer.h"
 
 using namespace luabind;
 
@@ -141,7 +142,24 @@ public:
 	adopt_compiler& _pass(LPCSTR vs, LPCSTR ps)
 	{
 		TryEndPass();
+#if defined(USE_DX11)
+		// SSS detail grass is compiled by Lua and does not pass through uber_deffer.
+		string512 green = {}, autumn = {}, dead = {};
+		const bool seasonalGrass = xr_strcmp(ps, "deffer_grass") == 0 && !C->L_textures.empty() &&
+			anthology_prepare_flora_textures(C->L_textures[0].c_str(), green, autumn, dead);
+		if (seasonalGrass)
+			ps = "deffer_anthology_ssfx_grass";
+#endif
 		C->r_Pass(vs, ps, true);
+#if defined(USE_DX11)
+		if (seasonalGrass)
+		{
+			C->r_dx10Texture("s_base_green", green);
+			C->r_dx10Texture("s_base_autumn", autumn);
+			C->r_dx10Texture("s_base_dead", dead);
+			C->r_dx10Texture("s_snow_tree", "anthology_seasons\\detail_snow_ground");
+		}
+#endif
 		return *this;
 	}
 

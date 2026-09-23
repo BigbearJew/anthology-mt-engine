@@ -4,10 +4,18 @@
 
 void CRenderTarget::phase_upscale(bool temporal)
 {
-	// SSS keeps the complete world (sky, water, forward transparencies and HUD
-	// reticle) in the split-tonemap generic target. Convert that signal to a
-	// linear FP16 temporal input before either vendor or the spatial SVP fallback.
-	u_setrt(rt_UpscaleInput, nullptr, nullptr, nullptr);
+	const bool temporalOutputValid = rt_UpscaleOutput->pSurface &&
+		rt_UpscaleOutput->pUAView && rt_UpscaleOutput->dwWidth == Device.dwWidth &&
+		rt_UpscaleOutput->dwHeight == Device.dwHeight;
+	const bool vendorDispatch = temporal && temporalOutputValid;
+	if (vendorDispatch)
+		g_AnthologyUpscaler.BeginGpuProfile();
+	// Export display-referred color and device depth together. Integer pixel
+	// loads keep both vendor inputs aligned with the motion-vector texels.
+	if (vendorDispatch)
+		u_setrt(rt_UpscaleInput, rt_UpscaleDepth, nullptr, nullptr);
+	else
+		u_setrt(rt_UpscaleInput, nullptr, nullptr, nullptr);
 	RImplementation.rmNormal();
 	RCache.set_CullMode(CULL_NONE);
 	RCache.set_Stencil(FALSE);
@@ -22,16 +30,14 @@ void CRenderTarget::phase_upscale(bool temporal)
 	prepareVertices->set(prepareWidth, prepareHeight, EPS_S, 1.f, prepareColor, 1.f, 1.f); ++prepareVertices;
 	prepareVertices->set(prepareWidth, 0.f, EPS_S, 1.f, prepareColor, 1.f, 0.f);
 	RCache.Vertex.Unlock(4, g_combine->vb_stride);
-	RCache.set_Element(s_upscale->E[1]);
+	RCache.set_Element(s_upscale->E[vendorDispatch ? 3 : 1]);
 	RCache.set_Geometry(g_combine);
 	RCache.Render(D3DPT_TRIANGLELIST, prepareOffset, 0, 4, 0, 2);
 
     bool resolved = false;
-	const bool temporalOutputValid = rt_UpscaleOutput->pSurface &&
-		rt_UpscaleOutput->pUAView && rt_UpscaleOutput->dwWidth == Device.dwWidth &&
-		rt_UpscaleOutput->dwHeight == Device.dwHeight;
 	if (temporal && !temporalOutputValid)
 	{
+		m_upscalerResetHistory = true;
 		static bool reportedInvalidOutput = false;
 		if (!reportedInvalidOutput)
 		{
@@ -39,30 +45,8 @@ void CRenderTarget::phase_upscale(bool temporal)
 			Msg("! [UPSCALER/RT] vendor dispatch skipped: output UAV/dimensions are invalid; spatial fallback selected");
 		}
 	}
-    if (temporal && temporalOutputValid)
+    if (vendorDispatch)
     {
-		// Export the sampled D24 hardware depth into an R32_FLOAT target. The
-		// vendor APIs consume device depth, not XRay's view-space position buffer
-		// and not the packed typeless depth/stencil allocation itself.
-		u_setrt(rt_UpscaleDepth, nullptr, nullptr, nullptr);
-		RImplementation.rmNormal();
-		RCache.set_CullMode(CULL_NONE);
-		RCache.set_Stencil(FALSE);
-
-		const float depthWidth = float(m_renderWidth);
-		const float depthHeight = float(m_renderHeight);
-		const u32 depthColor = color_rgba(255, 255, 255, 255);
-		u32 depthOffset = 0;
-		FVF::TL* depthVertices = (FVF::TL*)RCache.Vertex.Lock(4, g_combine->vb_stride, depthOffset);
-		depthVertices->set(0.f, depthHeight, EPS_S, 1.f, depthColor, 0.f, 1.f); ++depthVertices;
-		depthVertices->set(0.f, 0.f, EPS_S, 1.f, depthColor, 0.f, 0.f); ++depthVertices;
-		depthVertices->set(depthWidth, depthHeight, EPS_S, 1.f, depthColor, 1.f, 1.f); ++depthVertices;
-		depthVertices->set(depthWidth, 0.f, EPS_S, 1.f, depthColor, 1.f, 0.f);
-		RCache.Vertex.Unlock(4, g_combine->vb_stride);
-		RCache.set_Element(s_upscale->E[3]);
-		RCache.set_Geometry(g_combine);
-		RCache.Render(D3DPT_TRIANGLELIST, depthOffset, 0, 4, 0, 2);
-
         RCache.set_RT(nullptr, 0);
         RCache.set_RT(nullptr, 1);
         RCache.set_RT(nullptr, 2);
@@ -73,12 +57,14 @@ void CRenderTarget::phase_upscale(bool temporal)
         // dispatches bypass RCache, so commit the null bindings immediately.
         SRVSManager.Apply();
         const bool resetHistory = m_upscalerResetHistory || Device.dwPrecacheFrame > 0;
+		g_AnthologyUpscaler.MarkGpuDispatch();
         resolved = g_AnthologyUpscaler.Dispatch(
             rt_UpscaleInput->pSurface,
             rt_ssfx_motion_vectors->pSurface,
 			rt_UpscaleDepth->pSurface,
             rt_UpscaleOutput->pSurface,
             resetHistory);
+		g_AnthologyUpscaler.EndGpuProfile();
 		// Both integrations submit compute work outside RCache. Release every CS
 		// resource/UAV slot before sampling the output as a pixel-shader SRV; this
 		// also prevents stale vendor bindings from leaking into the next frame.
@@ -92,8 +78,7 @@ void CRenderTarget::phase_upscale(bool temporal)
 		// Force XRay to bind its complete fullscreen-present state again instead
 		// of trusting stale backend caches left from before the vendor dispatch.
 		RCache.InvalidateExternalState();
-		if (resolved && Device.dwPrecacheFrame == 0)
-			m_upscalerResetHistory = false;
+		m_upscalerResetHistory = !resolved || Device.dwPrecacheFrame > 0;
     }
 
 	// Temporal failure and PiP/SVP frames use a spatial reconstruction into the

@@ -104,7 +104,7 @@ bool CDLSSWrapper::Draw(const DrawParameters& params)
     eval.InReset = params.reset;
 	eval.InPreExposure = 1.f;
 	eval.InExposureScale = 1.f;
-	eval.InFrameTimeDeltaInMsec = _max(1.f, Device.fTimeDelta * 1000.f);
+	eval.InFrameTimeDeltaInMsec = params.frameTimeMs;
     // SSS stores currentUV - previousUV. NGX expects the displacement from
     // the current pixel to its previous-frame pixel, expressed in pixels.
     eval.InMVScaleX = -float(params.renderWidth);

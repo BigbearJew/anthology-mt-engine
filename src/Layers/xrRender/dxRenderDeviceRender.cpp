@@ -2,6 +2,46 @@
 #include "dxRenderDeviceRender.h"
 
 #include "ResourceManager.h"
+#include "PresentIntervalProfile.h"
+#include "../../xrEngine/EngineThreading.h"
+
+extern bool IsMainMenuActive();
+
+namespace
+{
+PresentIntervalProfile g_presentIntervalProfile;
+
+bool PreparePresentIntervalProfile()
+{
+	const bool enabled = mt_FrameProfile && CPU::qpc_freq && Device.b_is_Active &&
+		!Device.dwPrecacheFrame && !Device.Paused() && g_loading_events.empty() && !IsMainMenuActive();
+	const u64 context = enabled ? (u64(Device.m_SecondViewport.IsSVPActive()) |
+		(u64(ps_scope_lense_temporal_mode) << 8) | (u64(ps_scope_lense_update_interval) << 16)) : 0;
+	g_presentIntervalProfile.BeginFrame(Device.dwFrame, enabled, context);
+	return enabled;
+}
+
+void RecordPresentInterval(HRESULT result)
+{
+	// DXGI_STATUS_OCCLUDED is a success HRESULT, but no frame was displayed.
+	const bool presented = result == S_OK;
+	if (!g_presentIntervalProfile.Presented(presented ? CPU::QPC() : 0, presented))
+		return;
+	const PresentIntervalProfile::Window window = g_presentIntervalProfile.FinishWindow();
+	const double toMs = 1000.0 / double(CPU::qpc_freq);
+	Msg("* [present-completion/profile] samples=%u pip=%d mode=%d interval=%d "
+		"all(p50/p95/max)=%.3f/%.3f/%.3f ms "
+		"after-svp(n/p50/p95/max)=%u/%.3f/%.3f/%.3f ms "
+		"regular(n/p50/p95/max)=%u/%.3f/%.3f/%.3f ms; successful Present completions",
+		u32(window.all.count), int(Device.m_SecondViewport.IsSVPActive()),
+		ps_scope_lense_temporal_mode, ps_scope_lense_update_interval,
+		double(window.all.p50) * toMs, double(window.all.p95) * toMs, double(window.all.maximum) * toMs,
+		u32(window.afterCapture.count), double(window.afterCapture.p50) * toMs,
+		double(window.afterCapture.p95) * toMs, double(window.afterCapture.maximum) * toMs,
+		u32(window.regular.count), double(window.regular.p50) * toMs,
+		double(window.regular.p95) * toMs, double(window.regular.maximum) * toMs);
+}
+}
 
 dxRenderDeviceRender::dxRenderDeviceRender()
 	: Resources(0)
@@ -36,6 +76,7 @@ void dxRenderDeviceRender::updateGamma()
 
 void dxRenderDeviceRender::OnDeviceDestroy(BOOL bKeepTextures)
 {
+	g_presentIntervalProfile.Reset();
 	m_WireShader.destroy();
 	m_SelectionShader.destroy();
 
@@ -56,6 +97,7 @@ void dxRenderDeviceRender::DestroyHW()
 
 void dxRenderDeviceRender::Reset(HWND hWnd, u32& dwWidth, u32& dwHeight, float& fWidth_2, float& fHeight_2)
 {
+	g_presentIntervalProfile.Reset();
 #ifdef DEBUG
     _SHOW_REF("*ref -CRenderDevice::ResetTotal: DeviceREF:",HW.pDevice);
 #endif // DEBUG
@@ -386,6 +428,7 @@ u32 dxRenderDeviceRender::GetCacheStatPolys()
 
 void dxRenderDeviceRender::Begin()
 {
+	PreparePresentIntervalProfile();
 #if !defined(USE_DX10) && !defined(USE_DX11)
 	CHK_DX(HW.pDevice->BeginScene());
 #endif	//	USE_DX10
@@ -422,6 +465,9 @@ void DoAsyncScreenshot();
 void dxRenderDeviceRender::End()
 {
 	VERIFY(HW.pDevice);
+	const bool profilePresent = PreparePresentIntervalProfile();
+	if (profilePresent && Device.m_SecondViewport.IsSVPFrame())
+		g_presentIntervalProfile.HiddenCapture();
 
 	if (HW.Caps.SceneMode) overdrawEnd();
 
@@ -447,13 +493,19 @@ void dxRenderDeviceRender::End()
 # endif
 
 	if (!Device.m_SecondViewport.IsSVPFrame() && !Device.m_SecondViewport.isCamReady) {
-		HW.m_pSwapChain->Present(present_interval, present_flags);
+		const HRESULT result = HW.m_pSwapChain->Present(present_interval, present_flags);
+		if (profilePresent)
+			RecordPresentInterval(result);
 	}
 #else //!USE_DX10 || USE_DX11
 	CHK_DX(HW.pDevice->EndScene());
 
 	if (!Device.m_SecondViewport.IsSVPFrame() && !Device.m_SecondViewport.isCamReady)
-		HW.pDevice->Present(NULL, NULL, NULL, NULL);
+	{
+		const HRESULT result = HW.pDevice->Present(NULL, NULL, NULL, NULL);
+		if (profilePresent)
+			RecordPresentInterval(result);
+	}
 #endif //-USE_DX10
 	//HRESULT _hr		= HW.pDevice->Present( NULL, NULL, NULL, NULL );
 	//if				(D3DERR_DEVICELOST==_hr)	return;			// we will handle this later

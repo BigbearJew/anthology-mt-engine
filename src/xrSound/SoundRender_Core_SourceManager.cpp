@@ -19,6 +19,42 @@ void NormalizeSourceName(LPCSTR name, string256& id)
 }
 }
 
+CSoundRender_Source* CSoundRender_Core::i_season_source(CSoundRender_Source* source, bool winter)
+{
+	if (!source)
+		return nullptr;
+	CSoundRender_Source* base = source->anthology_original ? source->anthology_original : source;
+	if (!winter)
+		return base;
+
+	// The prefetch worker prepares metadata only. Publish sources via the normal cache.
+	if (!base->anthology_winter_checked)
+	{
+		base->anthology_winter_checked = true;
+		LPCSTR name = base->file_name();
+		if (name && (strncmp(name, "ambient\\", 8) == 0 ||
+			strncmp(name, "nature\\", 7) == 0 ||
+			strncmp(name, "material\\actor\\step\\", 20) == 0 ||
+			strncmp(name, "material\\human\\step\\", 20) == 0))
+		{
+			static const char prefix[] = "anthology_seasons\\winter\\";
+			string256 candidate;
+			if (strlen(name) + sizeof(prefix) <= sizeof(candidate))
+			{
+				strconcat(sizeof(candidate), candidate, prefix, name);
+				string_path resolved;
+				if (FS.exist(resolved, "$game_sounds$", candidate, ".ogg"))
+				{
+					base->anthology_winter = i_create_source(candidate);
+					if (base->anthology_winter)
+						base->anthology_winter->anthology_original = base;
+				}
+			}
+		}
+	}
+	return base->anthology_winter ? base->anthology_winter : base;
+}
+
 CSoundRender_Source* CSoundRender_Core::i_create_source(LPCSTR name)
 {
 	string256 id;

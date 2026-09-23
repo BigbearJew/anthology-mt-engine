@@ -30,6 +30,7 @@ void CSoundRender_Emitter::update(float dt)
 {
 	float fTime = SoundRender->fTimer_Value;
 	float fDeltaTime = SoundRender->fTimer_Delta;
+    refresh_season_source();
 
 	VERIFY2(!!(owner_data) || (!(owner_data)&&(m_current_state==stStopped)), "owner");
 	VERIFY2(owner_data?*(int*)(&owner_data->feedback):1, "owner");
