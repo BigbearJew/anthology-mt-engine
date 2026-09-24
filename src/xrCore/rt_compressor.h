@@ -5,6 +5,8 @@
 extern XRCORE_API void rtc_initialize();
 extern XRCORE_API u32 rtc_compress(void* dst, u32 dst_len, const void* src, u32 src_len);
 extern XRCORE_API u32 rtc_decompress(void* dst, u32 dst_len, const void* src, u32 src_len);
+extern XRCORE_API bool rtc_try_decompress(void* dst, u32 dst_len, const void* src, u32 src_len,
+    u32& actual_size, bool& output_overrun);
 extern XRCORE_API u32 rtc_csize(u32 in);
 
 extern XRCORE_API void rtc9_initialize();

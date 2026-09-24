@@ -1727,6 +1727,36 @@ void CLocatorAPI::file_from_archive(IReader*& R, LPCSTR fname, const file& desc)
 {
 	// Archived one
 	archive& A = m_archives[desc.vfs];
+	const auto decompress = [&](const u8* source) -> IReader*
+	{
+		u32 capacity = desc.size_real;
+		u8* dest = xr_alloc<u8>(capacity);
+		u32 actual_size = 0;
+		bool output_overrun = false;
+		bool valid = rtc_try_decompress(dest, capacity, source, desc.size_compressed, actual_size, output_overrun);
+		// Some addon indices understate a valid LZO stream's size (GFY: +39 B).
+		// Retry once with bounded slack; never trust the unchecked decoder.
+		constexpr u32 slack = 64 * 1024;
+		if (!valid && output_overrun && capacity <= u32(-1) - slack)
+		{
+			capacity += slack;
+			xr_free(dest);
+			dest = xr_alloc<u8>(capacity);
+			valid = rtc_try_decompress(dest, capacity, source, desc.size_compressed, actual_size, output_overrun);
+		}
+		if (!valid)
+		{
+			xr_free(dest);
+			Msg("! [archive-decompress] invalid entry: archive=%s file=%s declared=%u compressed=%u",
+				*A.path, fname, desc.size_real, desc.size_compressed);
+			R_ASSERT3(false, "Invalid compressed archive entry", fname);
+			return nullptr;
+		}
+		if (actual_size != desc.size_real)
+			Msg("! [archive-decompress] size mismatch recovered: archive=%s file=%s declared=%u decoded=%u",
+				*A.path, fname, desc.size_real, actual_size);
+		return xr_new<CTempReader>(dest, actual_size, 0);
+	};
 	if (const xr_shared_ptr<ArchiveDataView> view = GetArchiveDataView(A))
 	{
 		R_ASSERT3(u64(desc.ptr) + desc.size_compressed <= view->size, "archive entry is outside mapping", fname);
@@ -1737,9 +1767,7 @@ void CLocatorAPI::file_from_archive(IReader*& R, LPCSTR fname, const file& desc)
 			return;
 		}
 
-		u8* dest = xr_alloc<u8>(desc.size_real);
-		rtc_decompress(dest, desc.size_real, source, desc.size_compressed);
-		R = xr_new<CTempReader>(dest, desc.size_real, 0);
+		R = decompress(source);
 		return;
 	}
 
@@ -1767,9 +1795,7 @@ void CLocatorAPI::file_from_archive(IReader*& R, LPCSTR fname, const file& desc)
 	}
 
 	// Compressed
-	u8* dest = xr_alloc<u8>(desc.size_real);
-	rtc_decompress(dest, desc.size_real, ptr + ptr_offs, desc.size_compressed);
-	R = xr_new<CTempReader>(dest, desc.size_real, 0);
+	R = decompress(ptr + ptr_offs);
 	UnmapViewOfFile(ptr);
 
 #ifdef FS_DEBUG
