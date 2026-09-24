@@ -364,7 +364,7 @@ void dxRenderDeviceRender::ResourcesFinalizeLoadGeneration(u64 generation)
 }
 
 xrCriticalSection resources_lock;
-void dxRenderDeviceRender::ResourcesGetMemoryUsage(u32& m_base, u32& c_base, u32& m_lmaps, u32& c_lmaps)
+void dxRenderDeviceRender::ResourcesGetMemoryUsage(u64& m_base, u32& c_base, u64& m_lmaps, u32& c_lmaps)
 {
     xrCriticalSectionGuard g(resources_lock);
 	if (Resources)
@@ -496,6 +496,7 @@ void dxRenderDeviceRender::End()
 		const HRESULT result = HW.m_pSwapChain->Present(present_interval, present_flags);
 		if (profilePresent)
 			RecordPresentInterval(result);
+		Resources->TrimUnusedTextures();
 	}
 #else //!USE_DX10 || USE_DX11
 	CHK_DX(HW.pDevice->EndScene());

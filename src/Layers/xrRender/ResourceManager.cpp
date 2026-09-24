@@ -10,6 +10,10 @@
 #pragma warning(default:4995)
 
 #include "ResourceManager.h"
+#include "TextureResidencyPolicy.h"
+#if defined(USE_DX10) || defined(USE_DX11)
+#include <dxgi1_4.h>
+#endif
 #include "tss.h"
 #include "blenders\blender.h"
 #include "blenders\blender_recorder.h"
@@ -654,6 +658,11 @@ void CResourceManager::QueueTextureLoad(const ref_texture& texture)
 {
 	if (!texture)
 		return;
+#if defined(USE_DX10) || defined(USE_DX11)
+	// Weather descriptors and PDA maps exist long before their images are shown.
+	if (texture->IsDemandOnly())
+		return;
+#endif
 
 	ResourceLoadGenerationPtr generation;
 	{
@@ -1199,16 +1208,22 @@ Shader* CResourceManager::_CreateShader(Shader* InShader, ref_shader* keep_alive
 	return N;
 }
 
-void CResourceManager::_GetMemoryUsage(u32& m_base, u32& c_base, u32& m_lmaps, u32& c_lmaps)
+void CResourceManager::_GetMemoryUsage(u64& m_base, u32& c_base, u64& m_lmaps, u32& c_lmaps)
 {
 	xrCriticalSectionGuard guard(creationGuard);
-	m_base = c_base = m_lmaps = c_lmaps = 0;
+	m_base = m_lmaps = 0;
+	c_base = c_lmaps = 0;
 
 	map_Texture::iterator I = m_textures.begin();
 	map_Texture::iterator E = m_textures.end();
 	for (; I != E; I++)
 	{
-		u32 m = I->second->flags.MemoryUsage;
+#if defined(USE_DX10) || defined(USE_DX11)
+		const u64 m = I->second->ResidentBytes();
+#else
+		const u64 m = I->second->flags.MemoryUsage;
+#endif
+		if (!m) continue;
 		if (strstr(I->first, "lmap"))
 		{
 			c_lmaps ++;
@@ -1225,7 +1240,7 @@ void CResourceManager::_GetMemoryUsage(u32& m_base, u32& c_base, u32& m_lmaps, u
 void CResourceManager::_DumpMemoryUsage()
 {
 	xrCriticalSectionGuard guard(creationGuard);
-	xr_multimap<u32, std::pair<u32, shared_str>> mtex;
+	xr_multimap<u64, std::pair<u32, shared_str>> mtex;
 
 	// sort
 	{
@@ -1233,7 +1248,11 @@ void CResourceManager::_DumpMemoryUsage()
 		map_Texture::iterator E = m_textures.end();
 		for (; I != E; I++)
 		{
-			u32 m = I->second->flags.MemoryUsage;
+#if defined(USE_DX10) || defined(USE_DX11)
+			const u64 m = I->second->ResidentBytes();
+#else
+			const u64 m = I->second->flags.MemoryUsage;
+#endif
 			shared_str n = I->second->cName;
 			mtex.insert(mk_pair(m, mk_pair(I->second->dwReference.load(std::memory_order_relaxed), n)));
 		}
@@ -1241,8 +1260,8 @@ void CResourceManager::_DumpMemoryUsage()
 
 	// dump
 	{
-		xr_multimap<u32, std::pair<u32, shared_str>>::iterator I = mtex.begin();
-		xr_multimap<u32, std::pair<u32, shared_str>>::iterator E = mtex.end();
+		xr_multimap<u64, std::pair<u32, shared_str>>::iterator I = mtex.begin();
+		xr_multimap<u64, std::pair<u32, shared_str>>::iterator E = mtex.end();
 		for (; I != E; I++)
 			Msg("* %4.1f : [%4d] %s", float(I->first) / 1024.f, I->second.first, I->second.second.c_str());
 	}
@@ -1255,6 +1274,93 @@ void CResourceManager::Evict()
 	CHK_DX(HW.pDevice->EvictManagedResources());
 #endif	//	USE_DX10
 }
+
+#if defined(USE_DX10) || defined(USE_DX11)
+void CResourceManager::TrimUnusedTextures()
+{
+	if (!IsTextureOwnerThread() || !g_appLoaded || !Device.b_is_Active || Device.dwPrecacheFrame)
+		return;
+	{
+		xrCriticalSectionGuard guard(textureLoadGuard);
+		if (resourceLoadGenerationStarting || activeResourceLoadGeneration)
+			return;
+	}
+	const u32 now = GetTickCount();
+	if (u32(now - m_textureBudgetAt) >= 1000)
+	{
+		if (!m_textureBudgetAt)
+			Msg("* [texture-residency] v157: demand-loaded sky/maps/ui, 64-bit accounting, bounded idle trim");
+		m_textureBudgetAt = now;
+		IDXGIAdapter3* adapter = nullptr;
+		if (HW.m_pAdapter && SUCCEEDED(HW.m_pAdapter->QueryInterface(__uuidof(IDXGIAdapter3), reinterpret_cast<void**>(&adapter))))
+		{
+			DXGI_QUERY_VIDEO_MEMORY_INFO info = {};
+			if (SUCCEEDED(adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info)))
+			{
+				m_textureLocalUsage = info.CurrentUsage;
+				m_textureLocalBudget = info.Budget;
+			}
+			adapter->Release();
+		}
+		MEMORYSTATUSEX memory = {};
+		memory.dwLength = sizeof(memory);
+		if (GlobalMemoryStatusEx(&memory))
+		{
+			m_textureAvailableRam = memory.ullAvailPhys;
+			m_textureTotalRam = memory.ullTotalPhys;
+		}
+	}
+	m_texturePressure = texture_residency::Pressure(m_texturePressure, m_textureLocalUsage,
+		m_textureLocalBudget, m_textureMemoryBytes.load(std::memory_order_relaxed), m_textureAvailableRam, m_textureTotalRam);
+
+	// No iterator survives the lock. A ref keeps a candidate alive across release.
+	// The caller has cleared both D3D bindings and the backend's raw SRV cache.
+	LARGE_INTEGER started, frequency;
+	QueryPerformanceCounter(&started);
+	QueryPerformanceFrequency(&frequency);
+	u64 released = 0;
+	u32 count = 0;
+	for (unsigned scan = 0; scan < texture_residency::ScanLimit; ++scan)
+	{
+		ref_texture texture;
+		{
+			xrCriticalSectionGuard guard(creationGuard);
+			auto it = m_textureTrimCursor.size() ? m_textures.upper_bound(m_textureTrimCursor.c_str()) : m_textures.begin();
+			if (it == m_textures.end())
+			{
+				m_textureTrimCursor = nullptr;
+				break;
+			}
+			m_textureTrimCursor = it->second->cName;
+			texture = ref_texture(it->second);
+		}
+		const u64 bytes = texture->TrimUnused(now, m_texturePressure);
+		if (bytes)
+		{
+			released += bytes;
+			++count;
+		}
+		LARGE_INTEGER elapsed;
+		QueryPerformanceCounter(&elapsed);
+		if (count >= texture_residency::ReleaseLimit || released >= texture_residency::ReleaseBytes ||
+			elapsed.QuadPart - started.QuadPart >= frequency.QuadPart / 2000)
+			break;
+	}
+	m_textureTrimBytes += released;
+	m_textureTrimCount += count;
+	if (m_textureTrimCount && u32(now - m_textureTrimLogAt) >= 5000)
+	{
+		Msg("* [texture-residency] released=%u/%.1f MiB allocated=%.1f MiB local=%.1f/%.1f MiB free-ram=%.1f MiB pressure=%u",
+			m_textureTrimCount, double(m_textureTrimBytes) / 1048576.,
+			double(m_textureMemoryBytes.load(std::memory_order_relaxed)) / 1048576.,
+			double(m_textureLocalUsage) / 1048576., double(m_textureLocalBudget) / 1048576.,
+			double(m_textureAvailableRam) / 1048576., unsigned(m_texturePressure));
+		m_textureTrimLogAt = now;
+		m_textureTrimBytes = 0;
+		m_textureTrimCount = 0;
+	}
+}
+#endif
 
 /*
 BOOL	CResourceManager::_GetDetailTexture(LPCSTR Name,LPCSTR& T, R_constant_setup* &CS)

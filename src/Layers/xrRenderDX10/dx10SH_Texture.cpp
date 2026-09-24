@@ -2,6 +2,7 @@
 #pragma hdrstop
 
 #include "../xrRender/ResourceManager.h"
+#include "../xrRender/TextureResidencyPolicy.h"
 
 #ifndef _EDITOR
 #include "../../xrEngine/render.h"
@@ -35,6 +36,7 @@ CTexture::CTexture()
 	pAVI = NULL;
 	pTheora = NULL;
 	desc_cache = 0;
+	desc = {};
 	seqMSPF = 0;
 	flags.MemoryUsage = 0;
 	flags.bLoaded = false;
@@ -58,6 +60,9 @@ CTexture::~CTexture()
 void CTexture::surface_set(ID3DBaseTexture* surf)
 {
 	wait_for_loading();
+	m_externalView.store(true, std::memory_order_relaxed);
+	desc_cache = nullptr;
+	desc = {};
 
 	if (cName.size() && strstr(cName.c_str(), "$user$"))
 		flags.bUser = true;
@@ -125,7 +130,7 @@ void CTexture::surface_set(ID3DBaseTexture* surf)
 
 ID3DBaseTexture* CTexture::surface_get()
 {
-	wait_for_loading();
+	EnsureLoadedForUse();
 	if (flags.bLoadedAsStaging)
 		ProcessStaging();
 
@@ -416,6 +421,56 @@ void CTexture::SetLoadSource(LPCSTR logical_name, LPCSTR resolved_path, ELoadKin
 	m_loadName = logical_name;
 	m_resolvedSourcePath = resolved_path;
 	loadKind.store(kind, std::memory_order_release);
+	m_demandOnly = kind == LoadKindDds && texture_residency::DemandOnly(logical_name);
+}
+
+void CTexture::Touch()
+{
+	m_usedAt.store(GetTickCount(), std::memory_order_relaxed);
+	m_used.store(true, std::memory_order_relaxed);
+}
+
+void CTexture::EnsureLoadedForUse()
+{
+	wait_for_loading();
+	if (!is_loaded() && !pSurface)
+		Load();
+	Touch();
+}
+
+ID3DShaderResourceView* CTexture::get_SRView()
+{
+	// Compute shaders can retain this raw view beyond the current frame.
+	m_externalView.store(true, std::memory_order_relaxed);
+	EnsureLoadedForUse();
+	if (flags.bLoadedAsStaging) ProcessStaging();
+	return m_pSRView;
+}
+
+void CTexture::desc_enshure()
+{
+	wait_for_loading();
+	// DDS dimensions survive eviction; UI layout must not keep invisible maps resident.
+	if (!pSurface && desc.Width && loadKind.load(std::memory_order_relaxed) == LoadKindDds)
+		return;
+	if (!pSurface && !is_loaded()) Load();
+	if (pSurface != desc_cache) desc_update();
+}
+
+u64 CTexture::TrimUnused(u32 now, bool pressure)
+{
+	if (!is_loaded() || loadKind.load(std::memory_order_acquire) != LoadKindDds ||
+		m_externalView.load(std::memory_order_relaxed) || flags.bUser || flags.bLoadedAsStaging ||
+		!pSurface || !seqDATA.empty() || pAVI || pTheora || !ResidentBytes())
+		return 0;
+	if (!texture_residency::Expired(now, m_loadedAt.load(std::memory_order_relaxed),
+		m_usedAt.load(std::memory_order_relaxed), m_used.load(std::memory_order_relaxed), m_demandOnly, pressure))
+		return 0;
+	const u64 bytes = ResidentBytes();
+	const D3D_TEXTURE2D_DESC dimensions = desc;
+	Unload();
+	desc = dimensions;
+	return bytes;
 }
 
 bool CTexture::TryQueueLoad()
@@ -506,6 +561,9 @@ bool CTexture::BeginLoad(bool queued)
 void CTexture::FinishLoad()
 {
 	flags.bLoaded = true;
+	m_loadedAt.store(GetTickCount(), std::memory_order_relaxed);
+	m_residentBytes.store(flags.MemoryUsage, std::memory_order_relaxed);
+	DEV->TextureAllocated(flags.MemoryUsage);
 	loadState.store(LoadStateLoaded, std::memory_order_release);
 }
 
@@ -767,6 +825,10 @@ void CTexture::Unload()
 
 void CTexture::ReleaseLoadedData()
 {
+	DEV->TextureReleased(m_residentBytes.exchange(0, std::memory_order_relaxed));
+	flags.MemoryUsage = 0;
+	desc_cache = nullptr;
+	desc = {};
 #ifdef DEBUG
 	string_path				msg_buff;
 	xr_sprintf				(msg_buff,sizeof(msg_buff),"* Unloading texture [%s] pSurface RefCount=",cName.c_str());

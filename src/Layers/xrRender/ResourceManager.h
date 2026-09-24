@@ -57,6 +57,10 @@ private:
 	// data
 	map_Blender m_blenders;
 	map_Texture m_textures;
+#if defined(USE_DX10) || defined(USE_DX11)
+	// Outlive every owning texture reference during manager destruction.
+	std::atomic<u64> m_textureMemoryBytes{0};
+#endif
 	map_Matrix m_matrices;
 	map_Constant m_constants;
 	map_RT m_rtargets;
@@ -168,6 +172,18 @@ private:
 	DWORD textureOwnerThread = 0;
 	bool resourceLoadGenerationStarting = false;
 	ResourceLoadGenerationPtr activeResourceLoadGeneration;
+#if defined(USE_DX10) || defined(USE_DX11)
+	shared_str m_textureTrimCursor;
+	u32 m_textureBudgetAt = 0;
+	u32 m_textureTrimLogAt = 0;
+	u32 m_textureTrimCount = 0;
+	u64 m_textureTrimBytes = 0;
+	u64 m_textureLocalUsage = 0;
+	u64 m_textureLocalBudget = 0;
+	u64 m_textureAvailableRam = 0;
+	u64 m_textureTotalRam = 0;
+	bool m_texturePressure = false;
+#endif
 
 	void QueueTextureLoad(const ref_texture& texture);
 	void ResolveTextureSource(LPCSTR name, LPCSTR canonical_level_path, TextureSourceInfo& result);
@@ -189,7 +205,7 @@ public:
 	void _ParseList(sh_list& dest, LPCSTR names);
 	IBlender* _GetBlender(LPCSTR Name);
 	IBlender* _FindBlender(LPCSTR Name);
-	void _GetMemoryUsage(u32& m_base, u32& c_base, u32& m_lmaps, u32& c_lmaps);
+	void _GetMemoryUsage(u64& m_base, u32& c_base, u64& m_lmaps, u32& c_lmaps);
 	void _DumpMemoryUsage();
 	//.	BOOL							_GetDetailTexture	(LPCSTR Name, LPCSTR& T, R_constant_setup* &M);
 
@@ -328,6 +344,11 @@ public:
 	void DeferredUpload();
 	void DeferredUnload();
 	void WaitForTextureLoads();
+#if defined(USE_DX10) || defined(USE_DX11)
+	void TrimUnusedTextures();
+	void TextureAllocated(u64 bytes) { m_textureMemoryBytes.fetch_add(bytes, std::memory_order_relaxed); }
+	void TextureReleased(u64 bytes) { m_textureMemoryBytes.fetch_sub(bytes, std::memory_order_relaxed); }
+#endif
 	bool IsTextureOwnerThread() const { return textureOwnerThread == GetCurrentThreadId(); }
 	u64 BeginLoadGeneration();
 	void AbortLoadGeneration(u64 generation);

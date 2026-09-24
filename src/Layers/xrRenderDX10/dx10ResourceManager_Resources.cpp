@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #pragma hdrstop
+#include "../xrRender/TextureResidencyPolicy.h"
 
 #pragma warning(disable:4995)
 #include <d3dx9.h>
@@ -948,6 +949,7 @@ ref_texture CResourceManager::_CreateTexture(LPCSTR _Name, bool prefetch, LPCSTR
 	string_path Name;
 	xr_strcpy(Name, _Name); //. andy if (strext(Name)) *strext(Name)=0;
 	fix_texture_name(Name);
+	texture_residency::CanonicalizeFileName(Name);
 	if ((!canonical_level_path || !canonical_level_path[0]) && !g_resource_level_path_override.empty())
 		canonical_level_path = g_resource_level_path_override.c_str();
 

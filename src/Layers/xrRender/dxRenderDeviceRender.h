@@ -51,7 +51,7 @@ public:
 	virtual void ResourcesPrepareLoad();
 	virtual void ResourcesDeferredUpload();
 	virtual void ResourcesDeferredUnload();
-	virtual void ResourcesGetMemoryUsage(u32& m_base, u32& c_base, u32& m_lmaps, u32& c_lmaps);
+	virtual void ResourcesGetMemoryUsage(u64& m_base, u32& c_base, u64& m_lmaps, u32& c_lmaps);
 	virtual void ResourcesDestroyNecessaryTextures();
 	virtual void ResourcesStoreNecessaryTextures();
 	virtual void ResourcesDumpMemoryUsage();

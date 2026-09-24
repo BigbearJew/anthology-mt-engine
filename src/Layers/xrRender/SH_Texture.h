@@ -40,6 +40,9 @@ public:
 	{
 		wait_for_loading();
 		bind(stage);
+#if defined(USE_DX10) || defined(USE_DX11)
+		Touch();
+#endif
 	}
 	bool TryQueueLoad();
 	void CancelQueuedLoad();
@@ -56,6 +59,10 @@ public:
 		LoadKindSequence,
 	};
 	void SetLoadSource(LPCSTR logical_name, LPCSTR resolved_path, ELoadKind kind);
+	bool IsDemandOnly() const { return m_demandOnly; }
+	void Touch();
+	u64 ResidentBytes() const { return m_residentBytes.load(std::memory_order_relaxed); }
+	u64 TrimUnused(u32 now, bool pressure);
 #endif
 	//	void								Apply			(u32 dwStage);
 
@@ -89,7 +96,7 @@ public:
 	virtual ~CTexture();
 
 #if defined(USE_DX10) || defined(USE_DX11)
-	ID3DShaderResourceView*				get_SRView() {return m_pSRView;}
+	ID3DShaderResourceView* get_SRView();
 #endif	//	USE_DX10
 
 private:
@@ -109,7 +116,12 @@ private:
 	void FailLoad();
 	void ReleaseLoadedData();
 	IC BOOL desc_valid() { wait_for_loading(); return pSurface==desc_cache; }
+#if defined(USE_DX10) || defined(USE_DX11)
+	void desc_enshure();
+	void EnsureLoadedForUse();
+#else
 	IC void desc_enshure() { wait_for_loading(); if (!desc_valid()) desc_update(); }
+#endif
 	void desc_update();
 #if defined(USE_DX10) || defined(USE_DX11)
 	void								Apply			(u32 dwStage);
@@ -124,7 +136,7 @@ public: //	Public class members (must be encapsulated furthur)
 		u32 bLoaded : 1;
 		u32 bUser : 1;
 		u32 seqCycles : 1;
-		u32 MemoryUsage : 27;
+		u64 MemoryUsage;
 #if defined(USE_DX10) || defined(USE_DX11)
 		u32					bLoadedAsStaging: 1;
 #endif	//	USE_DX10
@@ -159,6 +171,12 @@ private:
 	D3D_TEXTURE2D_DESC desc;
 
 #if defined(USE_DX10) || defined(USE_DX11)
+	std::atomic<u64> m_residentBytes{0};
+	xr_atomic_u32 m_loadedAt{0};
+	xr_atomic_u32 m_usedAt{0};
+	std::atomic<bool> m_used{false};
+	std::atomic<bool> m_externalView{false};
+	bool m_demandOnly = false;
 	ID3DShaderResourceView*			m_pSRView;
 	shared_str m_loadName;
 	shared_str m_resolvedSourcePath;
