@@ -352,7 +352,10 @@ void CScriptEngine::lua_error_not_crash(lua_State* L)
 
 void printLuaStack()
 {
-	ai().script_engine().print_stack();
+	// A crash during startup/shutdown must not lazily recreate AI or use FS.
+	if (g_ai_space)
+		if (CScriptEngine* engine = g_ai_space->script_engine_if_initialized())
+			engine->print_stack();
 }
 
 int CScriptEngine::lua_pcall_failed(lua_State* L)

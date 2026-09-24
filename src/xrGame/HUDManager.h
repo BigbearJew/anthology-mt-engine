@@ -119,7 +119,10 @@ public:
 	}
 
 	void Render_R1_Attachment_UI();
+	void WaitForUIUpdate();
 };
+
+extern xrCriticalSection ui_lock;
 
 IC CHUDManager& HUD()
 {

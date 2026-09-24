@@ -394,6 +394,22 @@ CUILevelMap::~CUILevelMap()
 {
 }
 
+void CUILevelMap::DrawTexture()
+{
+	if (!Heading() && GetStretchTexture())
+	{
+		Frect rect;
+		GetAbsoluteRect(rect);
+		rect.add(m_TextureOffset.x, m_TextureOffset.y);
+		// Reject before SetShader binds (and loads) the DDS. Keep edge pixels
+		// conservatively; child spots/pointers still draw through CUIStatic::Draw.
+		rect.grow(1.0f, 1.0f);
+		if (!WorkingArea().intersected(rect))
+			return;
+	}
+	inherited::DrawTexture();
+}
+
 void CUILevelMap::Draw()
 {
 	if (MapWnd())

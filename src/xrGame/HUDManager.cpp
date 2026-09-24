@@ -185,6 +185,21 @@ xrCriticalSection ui_lock;
 // for that publication. This preserves the useful renderer overlap without
 // allowing stale UI state to reach the screen.
 static xr_atomic_u32 ui_update_frame{u32(-1)};
+void CHUDManager::WaitForUIUpdate()
+{
+	PROF_EVENT("Wait current MT UI frame");
+	u32 spin_count = 0;
+	while (mt_ui && b_online &&
+		ui_update_frame.load(std::memory_order_acquire) !=
+		Device.dwFrame - (Device.IsSVPRenderOnlyFrame() ? 1u : 0u))
+	{
+		if (++spin_count < 256)
+			_mm_pause();
+		else
+			SwitchToThread();
+	}
+}
+
 extern BOOL mt_TaskManager;
 void CHUDManager::OnFrameMT()
 {
@@ -333,20 +348,7 @@ void CHUDManager::RenderUI()
 		HitMarker.Render();
 		if (pUIGame)
 		{
-			if (mt_ui)
-			{
-				PROF_EVENT("Wait current MT UI frame");
-				u32 spin_count = 0;
-				while (mt_ui && b_online &&
-					ui_update_frame.load(std::memory_order_acquire) !=
-                        Device.dwFrame - (Device.IsSVPRenderOnlyFrame() ? 1u : 0u))
-				{
-					if (++spin_count < 256)
-						_mm_pause();
-					else
-						SwitchToThread();
-				}
-			}
+			WaitForUIUpdate();
 			xrCriticalSectionGuard guard(&ui_lock);
 			pUIGame->Render();
 		}

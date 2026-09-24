@@ -1738,10 +1738,15 @@ extern int ps_r4_hdr10_pda; // NOTE: this is a hack to avoid double HDR tonemapp
 void CLevel::OnRender()
 {
 	// PDA
-	if (game && CurrentGameUI() && &CurrentGameUI()->GetPdaMenu() != nullptr)
+	if (game && CurrentGameUI() && psActorFlags.test(AF_3D_PDA) &&
+		CurrentGameUI()->GetPdaMenu().IsShown())
 	{
+		// The PDA is rendered before the main HUD pass. Its hints share the
+		// same text buffers with the UI worker and need the same frame fence.
+		HUD().WaitForUIUpdate();
+		xrCriticalSectionGuard guard(ui_lock);
 		CUIPdaWnd* pda = &CurrentGameUI()->GetPdaMenu();
-		if (psActorFlags.test(AF_3D_PDA) && pda->IsShown())
+		if (pda->IsShown())
 		{
 			ps_r4_hdr10_pda = 1; // !!! HACK !!!
 

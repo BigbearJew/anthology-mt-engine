@@ -128,6 +128,10 @@ void xrMemory::_destroy()
     if (debug_mode) dbg_dump_str_leaks();
 #endif // DEBUG_MEMORY_MANAGER
 
+	// Static INI entries own shared strings. Clear them while their pool and
+	// CacheCS are still alive, not later during CRT static destruction.
+	CInifile::InvalidateCache();
+
 	// Release own reference of g_pStringContainer
 	// The actual str_container will be destroyed only when no shared_str instances hold it
     g_pStringContainer = nullptr;
