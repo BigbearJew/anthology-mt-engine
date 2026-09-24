@@ -101,6 +101,7 @@ public:
 	IBlender* b_lut;
 	IBlender* b_smaa;
 	IBlender* b_upscale;
+	IBlender* b_upscale_aux;
 	// compute shader for hdao
 	IBlender* b_hdao_cs;
 	IBlender* b_hdao_msaa_cs;
@@ -136,6 +137,7 @@ public:
 	ref_rt rt_UpscaleInput; // low-resolution post-process result
 	ref_rt rt_UpscaleDepth; // low-resolution R32_FLOAT hardware-depth export
 	ref_rt rt_UpscaleOutput; // full-resolution FSR/DLSS result
+	ref_rt rt_UpscaleHudDepth;
 	ref_rt rt_UpscalePost; // display-resolution tone map and screen-space result
 	ref_rt rt_MSAADepth; // z-buffer for MSAA deferred shading
 	ref_rt rt_Generic_0_r; // MRT generic 0
@@ -345,6 +347,7 @@ private:
 	ref_shader s_heatvision; //--DSR-- HeatVision
 	ref_shader s_smaa;
 	ref_shader s_upscale;
+	ref_shader s_upscale_aux;
 
 	ref_shader s_lut;
 	//	generate min/max
@@ -586,6 +589,10 @@ public:
 	void phase_combine_volumetric();
 	void phase_pp(bool upscaledSource = false);
 	void phase_upscale(bool temporal);
+	bool m_upscaleLinearOutput = false;
+	void phase_upscale_finish();
+	void phase_upscale_reticle();
+	void draw_upscale_aux(int element);
 	bool begin_svp_quality_pass();
 	void end_svp_quality_pass();
 	bool svp_quality_pass_active() const { return m_svpRtBankActive; }

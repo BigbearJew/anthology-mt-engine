@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "blender_upscale.h"
 
-CBlender_upscale::CBlender_upscale()
+CBlender_upscale::CBlender_upscale(bool auxiliary) : m_auxiliary(auxiliary)
 {
     description.CLS = 0;
 }
@@ -9,6 +9,27 @@ CBlender_upscale::CBlender_upscale()
 void CBlender_upscale::Compile(CBlender_Compile& C)
 {
     IBlender::Compile(C);
+	if (m_auxiliary)
+	{
+		if (C.iElement == 0)
+		{
+			C.r_Pass("stub_screen_space", "anthology_upscale_hud_depth", FALSE, TRUE, TRUE);
+			C.PassSET_ZB(TRUE, TRUE, FALSE);
+			C.r_dx10Texture("s_depth", r4_RT_upscale_depth);
+			C.r_dx10Sampler("smp_nofilter");
+		}
+		else
+		{
+			C.r_Pass("stub_screen_space", "anthology_upscale_resolve", FALSE, FALSE, FALSE);
+			C.r_dx10Texture("s_image", r4_RT_upscale_output);
+			C.r_dx10Texture("s_position", r2_RT_P);
+			C.r_dx10Texture("s_motion", r2_RT_ssfx_motion_vectors);
+			C.r_dx10Sampler("smp_nofilter");
+			C.r_dx10Sampler("smp_rtlinear");
+		}
+		C.r_End();
+		return;
+	}
 
 	if (C.iElement == 4 || C.iElement == 5)
 	{
@@ -62,7 +83,7 @@ void CBlender_upscale::Compile(CBlender_Compile& C)
 		return;
 	}
 
-    C.r_Pass("stub_notransform_t", "anthology_upscale_copy", FALSE, FALSE, FALSE);
+    C.r_Pass("stub_screen_space", "anthology_upscale_copy", FALSE, FALSE, FALSE);
     C.r_dx10Texture("s_image", C.iElement == 0 ? r4_RT_upscale_input : r4_RT_upscale_output);
     C.r_dx10Sampler("smp_rtlinear");
     C.r_End();

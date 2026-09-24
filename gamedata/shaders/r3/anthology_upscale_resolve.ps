@@ -1,0 +1,45 @@
+#include "common.h"
+Texture2D<float4> s_motion;
+float4 anthology_upscale_linear;
+float4 anthology_jitter_uv;
+float4 anthology_core_res;
+float4 ssfx_motionblur;
+float4 ssfx_timedelta;
+float4x4 m_current, m_previous;
+
+float3 display_color(float2 uv)
+{
+    float3 c = max(s_image.SampleLevel(smp_rtlinear, uv, 0).rgb, 0);
+    return anthology_upscale_linear.x > 0.5 ? pow(c, 1.0 / 2.2) : c;
+}
+
+float4 main(p_screen I) : SV_Target
+{
+    float2 uv = I.tc0;
+    float2 raster_uv = uv + anthology_jitter_uv.xy;
+    float3 color = display_color(uv);
+    float4 mv = s_motion.SampleLevel(smp_nofilter, raster_uv, 0);
+    if (anthology_upscale_linear.y <= 0 || mv.z > 0.5 || mv.w >= 1.5 || ssfx_motionblur.z > 0)
+        return float4(color, 1);
+    float depth = s_position.SampleLevel(smp_nofilter, raster_uv, 0).z;
+    if (ssfx_motionblur.w < 1)
+    {
+        float4 p = float4(depth * (uv * anthology_core_res.xy * pos_decompression_params.zw - pos_decompression_params.xy), depth, 1);
+        float4 current = mul(m_current, p), previous = mul(m_previous, p);
+        float2 camera = (current.xy / current.w - previous.xy / previous.w) * float2(0.5, -0.5);
+        mv.xy -= camera * (1 - ssfx_motionblur.w);
+    }
+    mv.xy *= anthology_upscale_linear.y / max(ssfx_timedelta.x * 60, 0.001);
+    int samples = clamp(int(length(mv.xy * screen_res.xy)), 1, clamp(int(ssfx_motionblur.x), 1, 16));
+    if (samples <= 1) return float4(color, 1);
+    float weight = 1;
+    [loop] for (int i = 1; i <= samples; ++i)
+    {
+        float2 tap = uv + mv.xy * (float(i) / samples - 0.5);
+        float tap_depth = s_position.SampleLevel(smp_nofilter, tap + anthology_jitter_uv.xy, 0).z;
+        float accept = 1 - saturate(abs(depth - tap_depth));
+        color += display_color(tap) * accept;
+        weight += accept;
+    }
+    return float4(color / weight, 1);
+}

@@ -630,7 +630,7 @@ void CRender::render_Reticle()
 
 void CRenderTarget::phase_svp_quality(ID3D11Texture2D* source)
 {
-	HW.pContext->CopyResource(rt_secondVP_capture->pTexture->surface_get(), source);
+	HW.pContext->CopyResource(rt_secondVP_capture->pSurface, source);
 
 	u32 offset = 0;
 	const u32 color = color_rgba(255, 255, 255, 255);
@@ -986,7 +986,7 @@ void CRender::RenderToTarget(RRT target)
 
 	if (target == rtSVP && RImplementation.o.ssfx_water)
 	{
-		HW.pContext->CopyResource(Target->rt_ssfx_water->pTexture->surface_get(), Target->rt_ssfx_water_main->pTexture->surface_get());
-		HW.pContext->CopyResource(Target->rt_ssfx_temp->pTexture->surface_get(), Target->rt_ssfx_water_blur_main->pTexture->surface_get());
+		HW.pContext->CopyResource(Target->rt_ssfx_water->pSurface, Target->rt_ssfx_water_main->pSurface);
+		HW.pContext->CopyResource(Target->rt_ssfx_temp->pSurface, Target->rt_ssfx_water_blur_main->pSurface);
 	}
 }

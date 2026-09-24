@@ -1,4 +1,10 @@
 Texture2D<float4> s_image;
+float4 anthology_upscale_linear;
+float3 prepare_color(float3 color)
+{
+    // FSR consumes linear RGB. DLSS LDR explicitly consumes gamma-encoded RGB.
+    return anthology_upscale_linear.x > 0.5 ? pow(max(color, 0), 2.2) : color;
+}
 
 #ifdef UPSCALE_PREPARE_DEPTH
 Texture2D<float> s_depth;
@@ -12,7 +18,7 @@ UpscaleInputs main(float4 position : SV_Position)
 {
 	int3 pixel = int3(position.xy, 0);
 	UpscaleInputs result;
-	result.color = float4(s_image.Load(pixel).rgb, 1.0f);
+	result.color = float4(prepare_color(s_image.Load(pixel).rgb), 1.0f);
 	result.depth = s_depth.Load(pixel);
 	return result;
 }

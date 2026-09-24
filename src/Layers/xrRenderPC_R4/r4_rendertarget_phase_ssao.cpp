@@ -208,7 +208,7 @@ void CRenderTarget::phase_ssfx_ao()
 
 	// Save AO frame
 	if (!Device.m_SecondViewport.IsSVPFrame())
-		HW.pContext->CopyResource(rt_ssfx_ao->pTexture->surface_get(), rt_ssfx_temp->pTexture->surface_get());
+		HW.pContext->CopyResource(rt_ssfx_ao->pSurface, rt_ssfx_temp->pSurface);
 
 	//scale_X = w / (ScaleFactor * 2.0f);
 	//scale_Y = h / (ScaleFactor * 2.0f);
@@ -349,7 +349,7 @@ void CRenderTarget::phase_ssfx_il()
 
 
 	// Save AO frame
-	HW.pContext->CopyResource(rt_ssfx_il->pTexture->surface_get(), rt_ssfx_temp2->pTexture->surface_get());
+	HW.pContext->CopyResource(rt_ssfx_il->pSurface, rt_ssfx_temp2->pSurface);
 
 	//scale_X = w / ScaleFactor;
 	//scale_Y = h / ScaleFactor;

@@ -459,6 +459,7 @@ Fvector4 ps_ssfx_taa = { 1, 0.5f, 0.6f, 0 }; // Enable, Jitter, Sharpness, -
 Fvector2 g_main_taa_jitter_pixels = { 0.f, 0.f };
 Fvector2 g_main_taa_render_size = { 1.f, 1.f };
 bool g_svp_qrt_active = false;
+bool g_upscale_reticle_pass = false;
 bool g_main_temporal_upscaler_active = false;
 
 u32 GetMainRenderWidth()

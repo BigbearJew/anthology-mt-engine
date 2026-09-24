@@ -17,9 +17,9 @@
 
 	float4 ssfx_mv_calc(float4 current, float4 previous, float IsHUD, float TAAMask)
 	{
-		// Keep the HUD mask in .z, but do not feed weapon/hands velocity into motion blur.
+		// Temporal reconstruction needs weapon/hand velocity too. Motion blur
+		// excludes the HUD through .z, without destroying the shared vectors.
 		float2 motion_vectors = (current.xy / current.w) - (previous.xy / previous.w);
-		motion_vectors *= (1.0f - saturate(IsHUD));
 		
 		// Negative native masks identify foliage to SSS AO. A zero HUD/history
 		// mask must not erase them; owner IDs occupy only the unmasked channel.

@@ -17,7 +17,7 @@ float3 pip_refresh_effects(float3 color, float2 lens_uv, float2 captured_uv)
     {
         float2 main_uv = (lens_uv - 0.5) * scope_lense_main_view.xy + scope_lense_main_view.zw;
         float3 old_effects = s_pip_capture_effects.SampleLevel(smp_base, saturate(captured_uv), 0).rgb;
-        float3 current_effects = s_pip_main_effects.SampleLevel(smp_base, saturate(main_uv), 0).rgb;
+        float3 current_effects = s_pip_main_effects.SampleLevel(smp_base, saturate(main_uv + scope_lense_live_effects.yz), 0).rgb;
         color = max(0.0, color - old_effects + current_effects);
     }
     return color;
@@ -39,7 +39,7 @@ float3 pip_capture_color(float2 uv)
     return s_second_vp.SampleLevel(smp_base, clamp(uv, screen_res.zw * 0.5, 1.0 - screen_res.zw * 0.5), 0).rgb;
 }
 
-// Catmull-Rom reconstruction only for moving owners; world sampling stays intact.
+// Reconstruct subpixel capture addresses without repeated bilinear softening.
 float3 pip_capture_dynamic(float2 uv)
 {
     uint width, height;
@@ -102,7 +102,7 @@ float4 sample_second_vp(float2 uv)
 
 float3 pip_capture_detail(float2 captured_uv, bool dynamic_owner)
 {
-    float3 center = dynamic_owner ? pip_capture_dynamic(captured_uv) : pip_capture_color(captured_uv);
+    float3 center = scope_lense_motion.x > 0.5 ? pip_capture_dynamic(captured_uv) : pip_capture_color(captured_uv);
     float sharpness = clamp(scope_lense_detail.x, 0.0, 2.0);
     [branch] if (abs(sharpness - 1.0) > 0.0001)
     {

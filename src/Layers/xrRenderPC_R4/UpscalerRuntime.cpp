@@ -3,6 +3,7 @@
 #include "../xrRender/xrRender_console.h"
 #include "../../xrEngine/igame_persistent.h"
 #include "../../xrEngine/EngineThreading.h"
+#include <dxgi1_4.h>
 
 CAnthologyUpscalerRuntime g_AnthologyUpscaler;
 
@@ -370,6 +371,18 @@ void CAnthologyUpscalerRuntime::BeginSceneGpuProfile()
 		m_gpuMaxMs = std::max(m_gpuMaxMs, double(times[4] - times[0]) * toMs);
 		if (++m_gpuProfileCount >= 120)
 		{
+			IDXGIAdapter3* adapter = nullptr;
+			if (HW.m_pAdapter && SUCCEEDED(HW.m_pAdapter->QueryInterface(__uuidof(IDXGIAdapter3), reinterpret_cast<void**>(&adapter))))
+			{
+				DXGI_QUERY_VIDEO_MEMORY_INFO local = {}, shared = {};
+				if (SUCCEEDED(adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local)) &&
+					SUCCEEDED(adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &shared)))
+				{
+					Msg("* [render-memory/profile] local=%.1f budget=%.1f shared=%.1f MiB",
+						double(local.CurrentUsage) / 1048576., double(local.Budget) / 1048576., double(shared.CurrentUsage) / 1048576.);
+				}
+				adapter->Release();
+			}
 			Msg("* [render-gpu/profile] mode=%s samples=%u render=%ux%u display=%ux%u main=%.3f max=%.3f prepare=%.3f vendor=%.3f upscale=%.3f ms; asynchronous GPU timestamps",
 				!IsEnabled() ? "native" : m_mode == AnthologyUpscalerFSR3 ? "FSR3" : "DLSS",
 				m_gpuProfileCount, IsEnabled() ? m_renderWidth : Device.dwWidth,

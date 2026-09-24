@@ -1222,12 +1222,18 @@ static class scope_lense_detail_setup : public R_constant_setup
 	}
 } scope_lense_detail;
 
+static Fvector2 main_view_jitter_ndc();
+
 static class scope_lense_live_effects_setup : public R_constant_setup
 {
     virtual void setup(R_constant* C) {
 #ifdef USE_DX11
         const bool ready = RImplementation.Target && RImplementation.Target->svp_live_effects_ready();
-        RCache.set_c(C, ready ? 1.f : 0.f, 0.f, 0.f, 0.f);
+        const Fvector2 jitter = main_view_jitter_ndc();
+        // Effect deltas remain on the raw raster grid; the displayed scene no longer does.
+        RCache.set_c(C, ready ? 1.f : 0.f,
+            g_upscale_reticle_pass ? jitter.x * .5f : 0.f,
+            g_upscale_reticle_pass ? jitter.y * -.5f : 0.f, 0.f);
 #else
         RCache.set_c(C, 0.f, 0.f, 0.f, 0.f);
 #endif
@@ -1266,7 +1272,8 @@ static class scope_lense_main_view_setup : public R_constant_setup
 			tangent = tanf(deg2rad(clampr(g_pGamePersistent->m_pGShaderConstants->hud_params.y, 1.f, 170.f)) * 0.5f);
 		// Reticle materials run under CHudInitializer: Device.mProject is HUD FOV.
 		const Fmatrix& projection = Device.mProject_saved;
-		const Fvector2 jitter = main_view_jitter_ndc();
+		Fvector2 jitter = main_view_jitter_ndc();
+        if (g_upscale_reticle_pass) jitter.set(0.f, 0.f);
 		RCache.set_c(C, projection._11 * tangent / _max(0.01f, Device.fASPECT),
 			projection._22 * tangent, 0.5f + (projection._31 + jitter.x) * 0.5f,
 			0.5f - (projection._32 + jitter.y) * 0.5f);
@@ -1436,7 +1443,8 @@ static class ssfx_jitter : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
 	{
-		const Fvector2 jitter = main_view_jitter_ndc();
+		Fvector2 jitter = main_view_jitter_ndc();
+        if (g_upscale_reticle_pass) jitter.set(0.f, 0.f);
 		RCache.set_c(C, jitter.x, jitter.y, ps_ssfx_taa.x, ps_ssfx_taa.w);
 	}
 }    ssfx_jitter;

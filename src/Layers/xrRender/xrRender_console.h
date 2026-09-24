@@ -10,6 +10,7 @@ extern ECORE_API Fvector4 ps_ssfx_taa;
 extern ECORE_API Fvector2 g_main_taa_jitter_pixels;
 extern ECORE_API Fvector2 g_main_taa_render_size;
 extern ECORE_API bool g_svp_qrt_active;
+extern ECORE_API bool g_upscale_reticle_pass;
 extern ECORE_API bool g_main_temporal_upscaler_active;
 extern ECORE_API u32 GetMainRenderWidth();
 extern ECORE_API u32 GetMainRenderHeight();

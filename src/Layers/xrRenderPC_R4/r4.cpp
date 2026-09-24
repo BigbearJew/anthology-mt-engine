@@ -2078,7 +2078,7 @@ HRESULT CRender::shader_compile(
 	if (useGeneratedShaderCache)
 	{
 		string_path file;
-		xr_strcpy(file, "shaders_cache\\r4\\anthology_pip154c\\");
+		xr_strcpy(file, "shaders_cache\\r4\\anthology_pip155d\\");
 		xr_strcat(file, name);
 		xr_strcat(file, ".");
 		xr_strcat(file, extension);

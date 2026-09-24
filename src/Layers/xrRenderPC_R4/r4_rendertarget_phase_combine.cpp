@@ -322,9 +322,9 @@ void CRenderTarget::phase_combine()
 
 	//Copy previous rt
 	if (!RImplementation.o.dx10_msaa)
-		HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0->pTexture->surface_get());
+		HW.pContext->CopyResource(rt_Generic_temp->pSurface, rt_Generic_0->pSurface);
 	else
-		HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0_r->pTexture->surface_get());
+		HW.pContext->CopyResource(rt_Generic_temp->pSurface, rt_Generic_0_r->pSurface);
 
 	if (RImplementation.o.ssfx_ssr)
 	{
@@ -358,7 +358,7 @@ void CRenderTarget::phase_combine()
 		set_viewport_size(HW.pContext, w, h);
 
 		// Save Frame
-		HW.pContext->CopyResource(rt_ssfx_water->pTexture->surface_get(), rt_ssfx_temp->pTexture->surface_get());
+		HW.pContext->CopyResource(rt_ssfx_water->pSurface, rt_ssfx_temp->pSurface);
 
 		// Water SSR Blur
 		phase_ssfx_water_blur();
@@ -368,8 +368,8 @@ void CRenderTarget::phase_combine()
 
 		if (!Device.m_SecondViewport.IsSVPFrame())
 		{
-			HW.pContext->CopyResource(rt_ssfx_water_main->pTexture->surface_get(), rt_ssfx_water->pTexture->surface_get());
-			HW.pContext->CopyResource(rt_ssfx_water_blur_main->pTexture->surface_get(), rt_ssfx_temp->pTexture->surface_get());
+			HW.pContext->CopyResource(rt_ssfx_water_main->pSurface, rt_ssfx_water->pSurface);
+			HW.pContext->CopyResource(rt_ssfx_water_blur_main->pSurface, rt_ssfx_temp->pSurface);
 		}
 	}
 
@@ -401,15 +401,15 @@ void CRenderTarget::phase_combine()
 	}
 
 	/*if (ssfx_PrevPos_Requiered)
-		HW.pContext->CopyResource(rt_ssfx_prevPos->pTexture->surface_get(), rt_Position->pTexture->surface_get());*/
+		HW.pContext->CopyResource(rt_ssfx_prevPos->pSurface, rt_Position->pSurface);*/
 
 	// Update rt_Generic_temp ( rain and water )
 	if (RImplementation.o.ssfx_glass)
 	{
 		if (!RImplementation.o.dx10_msaa)
-			HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0->pTexture->surface_get());
+			HW.pContext->CopyResource(rt_Generic_temp->pSurface, rt_Generic_0->pSurface);
 		else
-			HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0_r->pTexture->surface_get());
+			HW.pContext->CopyResource(rt_Generic_temp->pSurface, rt_Generic_0_r->pSurface);
 	}
 
 	// Forward rendering
@@ -451,10 +451,10 @@ void CRenderTarget::phase_combine()
 	if (RImplementation.o.dx10_msaa)
 	{
 		// we need to resolve rt_Generic_1 into rt_Generic_1_r
-		HW.pContext->ResolveSubresource(rt_Generic_1->pTexture->surface_get(), 0,
-		                                rt_Generic_1_r->pTexture->surface_get(), 0, DXGI_FORMAT_R8G8B8A8_UNORM);
-		HW.pContext->ResolveSubresource(rt_Generic_0->pTexture->surface_get(), 0,
-		                                rt_Generic_0_r->pTexture->surface_get(), 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+		HW.pContext->ResolveSubresource(rt_Generic_1->pSurface, 0,
+		                                rt_Generic_1_r->pSurface, 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+		HW.pContext->ResolveSubresource(rt_Generic_0->pSurface, 0,
+		                                rt_Generic_0_r->pSurface, 0, DXGI_FORMAT_R8G8B8A8_UNORM);
 	}
 
 	// for msaa we need a resolved color buffer - Holger
@@ -529,7 +529,7 @@ void CRenderTarget::phase_combine()
 		phase_ssfx_fog_scattering();
 	}
 
-	if (RImplementation.o.ssfx_motionblur && ps_ssfx_motionblur.y > 0 && !svp_frame)
+	if (RImplementation.o.ssfx_motionblur && ps_ssfx_motionblur.y > 0 && !svp_frame && !m_upscalerActive)
 	{
 		phase_ssfx_motion_blur();
 	}
@@ -571,7 +571,10 @@ void CRenderTarget::phase_combine()
 		scope_3D_fake_enabled && !svp_frame && ps_r2_heatvision > 0 &&
 		ps_scope_lense_allow_thermal != 0 && Device.m_SecondViewport.IsSVPActive() &&
 		Device.m_SecondViewport.IsSVPThermal();
-	if (scope_3D_fake_enabled && !defer_reticle_after_head_heatvision)
+	const bool display_reticle = scope_3D_fake_enabled && !svp_frame && m_upscalerActive;
+	const bool taa_reticle = scope_3D_fake_enabled && !svp_frame && !m_upscalerActive &&
+		RImplementation.o.ssfx_taa && ps_ssfx_taa.x > 0;
+	if (scope_3D_fake_enabled && !defer_reticle_after_head_heatvision && !display_reticle && !taa_reticle)
 	{
 		phase_3DSSReticle(); // Redotix99: for 3D Shader Based Scopes
 	}
@@ -621,7 +624,7 @@ void CRenderTarget::phase_combine()
 	if (head_heatvision || lens_heatvision)
 		phase_heatvision();
 
-	if (defer_reticle_after_head_heatvision)
+	if (defer_reticle_after_head_heatvision && !display_reticle && !taa_reticle)
 		phase_3DSSReticle();
 	//--DSR-- HeatVision_end
 
@@ -647,7 +650,15 @@ void CRenderTarget::phase_combine()
 	}
 
 	if (ssfx_PrevPos_Requiered && !svp_frame)
-		HW.pContext->CopyResource(rt_ssfx_prevPos->pTexture->surface_get(), rt_Position->pTexture->surface_get());
+		HW.pContext->CopyResource(rt_ssfx_prevPos->pSurface, rt_Position->pSurface);
+	if (taa_reticle)
+	{
+		// PiP already has its own reprojection. Jittering it and then skipping
+		// TAA left the subpixel pattern visible in the lens and reticle edges.
+		g_upscale_reticle_pass = true;
+		phase_3DSSReticle();
+		g_upscale_reticle_pass = false;
+	}
 
 	// PP enabled ?
 	//	Render to RT texture to be able to copy RT even in windowed mode.
@@ -661,7 +672,11 @@ void CRenderTarget::phase_combine()
 	// bloom, colour grading, LUT and legacy motion blur. Those display effects
 	// must execute once, after DLSS/FSR, rather than becoming temporal input.
 	if (m_upscalerActive)
+	{
 		phase_upscale(!svp_frame);
+		phase_upscale_finish();
+		if (display_reticle) phase_upscale_reticle();
+	}
 
 	// Combine everything + perform AA
 	if (RImplementation.o.dx10_msaa)
@@ -708,6 +723,7 @@ void CRenderTarget::phase_combine()
 		float ddh = 1.f / _h;
 		p0.set(.5f / _w, .5f / _h);
 		p1.set((_w + .5f) / _w, (_h + .5f) / _h);
+		if (m_upscalerActive) { p0.set(0.f, 0.f); p1.set(1.f, 1.f); }
 
 		// Fill vertex buffer
 		v_aa* pv = (v_aa*)RCache.Vertex.Lock(4, g_aa_AA->vb_stride, Offset);
@@ -805,11 +821,11 @@ void CRenderTarget::phase_combine()
 	if (RImplementation.o.dx11_hdr10) {
 		// TODO: we should be able to avoid a copy if both are enabled
 		if (ps_r4_hdr10_bloom_on) {
-			HW.pContext->CopyResource(rt_Generic_0->pTexture->surface_get(), rt_Color->pTexture->surface_get());
+			HW.pContext->CopyResource(rt_Generic_0->pSurface, rt_Color->pSurface);
 			phase_hdr10_bloom(); // samples from rt_Generic_0, writes to rt_Color
 		}
 		if (ps_r4_hdr10_flare_on) {
-			HW.pContext->CopyResource(rt_Generic_0->pTexture->surface_get(), rt_Color->pTexture->surface_get());
+			HW.pContext->CopyResource(rt_Generic_0->pSurface, rt_Color->pSurface);
 			phase_hdr10_lens_flare(); // samples from rt_Generic_0, writes to rt_Color
 		}
 	}

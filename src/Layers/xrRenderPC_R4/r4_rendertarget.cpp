@@ -498,7 +498,7 @@ bool CRenderTarget::begin_svp_quality_pass()
     }
 	// At native resolution only the two persistent SSFX histories need isolation.
 	// Scratch targets are overwritten by the following main frame as before.
-	if (ps_scope_lense_quality_percent >= 100)
+	if (ps_scope_lense_quality_percent >= 100 && !m_upscalerActive)
 	{
 		if (rt_ssfx_sss && rt_ssfx_sss->valid() && !m_svpSssHistory)
 			m_svpSssHistory.create("$user$svp_sss_history", m_renderWidth, m_renderHeight, rt_ssfx_sss->fmt);
@@ -510,8 +510,10 @@ bool CRenderTarget::begin_svp_quality_pass()
 		return true;
 	}
 	const u32 quality = clampr(ps_scope_lense_quality_percent, 25, 100);
-	const u32 width = _max(320u, ((m_renderWidth * quality / 100u) + 1u) & ~1u);
-	const u32 height = _max(180u, ((m_renderHeight * quality / 100u) + 1u) & ~1u);
+	// PiP has no vendor temporal reconstruction of its own. Its quality setting
+	// is relative to the display, never to the reduced DLSS/FSR main view.
+	const u32 width = quality == 100 ? Device.dwWidth : _max(320u, ((Device.dwWidth * quality / 100u) + 1u) & ~1u);
+	const u32 height = quality == 100 ? Device.dwHeight : _max(180u, ((Device.dwHeight * quality / 100u) + 1u) & ~1u);
 	if (width != m_svpRtBankWidth || height != m_svpRtBankHeight)
 		create_svp_rt_bank(width, height);
 
@@ -577,7 +579,8 @@ CRenderTarget::CRenderTarget()
 			"anthology_combine_2_upscaled.ps", "anthology_combine_2_upscaled_d.ps",
 			"anthology_upscale_copy.ps", "anthology_upscale_prepare.ps",
 			"anthology_upscale_prepare_depth.ps", "anthology_upscale_postprocess.ps",
-			"anthology_upscale_postprocess_cm.ps"
+			"anthology_upscale_postprocess_cm.ps", "anthology_upscale_hud_depth.ps",
+			"anthology_upscale_resolve.ps"
 		};
 		for (const char* name : required)
 		{
@@ -696,6 +699,7 @@ CRenderTarget::CRenderTarget()
 	b_lut = xr_new<CBlender_lut>();
 	b_smaa = xr_new<CBlender_smaa>();
 	b_upscale = xr_new<CBlender_upscale>();
+	b_upscale_aux = xr_new<CBlender_upscale>(true);
 
 	// HDR10
 	b_hdr10_bloom_downsample = xr_new<CBlender_hdr10_bloom_downsample>();
@@ -950,6 +954,7 @@ CRenderTarget::CRenderTarget()
 		if (m_upscalerActive)
 		{
 			rt_UpscaleInput.create(r4_RT_upscale_input, w, h, D3DFMT_A16B16G16R16F, 1);
+			rt_UpscaleHudDepth.create("$user$upscale_hud_depth", Device.dwWidth, Device.dwHeight, D3DFMT_D24S8, 1);
 			// Preserve the main D24S8 buffer for XRay stencil work, but export its
 			// sampled hardware depth to the single-channel float format required by
 			// temporal upscalers.
@@ -1613,7 +1618,10 @@ CRenderTarget::CRenderTarget()
 	// PP
 	s_postprocess.create("postprocess");
 	if (m_upscalerActive)
+		{
 		s_upscale.create(b_upscale, "r2\\upscale");
+		s_upscale_aux.create(b_upscale_aux, "r2\\upscale_aux");
+	}
 	g_postprocess.create(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_SPECULAR | D3DFVF_TEX3, RCache.Vertex.Buffer(),
 	                     RCache.QuadIB);
 
@@ -1722,6 +1730,7 @@ CRenderTarget::~CRenderTarget()
 	xr_delete(b_lut);
 	xr_delete(b_smaa);
 	xr_delete(b_upscale);
+	xr_delete(b_upscale_aux);
 
 	// [ SSS Stuff ]
 	xr_delete(b_ssfx_fog_scattering); // SSS MotionBlur

@@ -1,0 +1,7 @@
+Texture2D<float> s_depth;
+SamplerState smp_nofilter;
+float4 anthology_jitter_uv;
+float main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Depth
+{
+    return s_depth.SampleLevel(smp_nofilter, uv + anthology_jitter_uv.xy, 0);
+}
