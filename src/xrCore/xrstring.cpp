@@ -9,14 +9,13 @@
 XRCORE_API intrusive_ptr<str_container> g_pStringContainer = nullptr;
 
 str_container::str_container() {}
-str_container::str_container(str_container_constructor_key) 
+str_container::str_container(str_container_constructor_key) : buffer(buffer_size)
 {
 	auto p = xr_malloc(block_size);
 	if (!p)
 		Debug.fatal(DEBUG_INFO, "str_container, failed to allocate block size %zu", block_size);
     storage.reserve(16);
 	storage.emplace_back((char*)p, block_size);
-    buffer.resize(buffer_size);
 }
 
 str_container* str_container::create()

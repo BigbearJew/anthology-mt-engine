@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include <malloc.h>
 #include <errno.h>
+#include "HeapUsageSnapshot.h"
 
 XRCORE_API void vminfo(size_t* _free, size_t* reserved, size_t* committed)
 {
@@ -44,15 +45,8 @@ size_t xrMemory::mem_usage(bool assert)
 {
     xrCriticalSectionGuard g(mem_lock);
 	PROF_EVENT("mem_usage");
-	_HEAPINFO hinfo = {};
-	int status;
-	size_t bytesUsed = 0;
-	while ((status = _heapwalk(&hinfo)) == _HEAPOK)
-	{
-		if (hinfo._useflag == _USEDENTRY)
-			bytesUsed += hinfo._size;
-	}
-	switch (status)
+	const auto usage = xr_heap::Snapshot();
+	switch (usage.status)
 	{
 	case _HEAPEMPTY:
 		break;
@@ -68,5 +62,5 @@ size_t xrMemory::mem_usage(bool assert)
         if (assert) FATAL("bad node in heap");
 		break;
 	}
-	return bytesUsed;
+	return usage.bytes;
 }

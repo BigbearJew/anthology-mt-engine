@@ -89,8 +89,8 @@ namespace std
 	};
 }
 
-// All str_value will persist in str_container, make counter non atomic, change if there will be erase functionality
-struct XRCORE_API str_value: public intrusive_base_impl<DeletionPolicy::Deferred, CounterPolicy::NonAtomic, false>
+// Copies in independent shared_str objects are used by concurrent load workers.
+struct XRCORE_API str_value: public intrusive_base_impl<DeletionPolicy::Deferred, CounterPolicy::Atomic, false>
 {
 	char* value;
 	size_t hash;
@@ -127,7 +127,7 @@ struct XRCORE_API str_value_hash
 
 class IWriter;
 
-class XRCORE_API str_container : public intrusive_base_impl<DeletionPolicy::Immediate, CounterPolicy::NonAtomic, false>
+class XRCORE_API str_container : public intrusive_base_impl<DeletionPolicy::Immediate, CounterPolicy::Atomic, false>
 {
 private:
 	struct pool_block {
@@ -197,6 +197,12 @@ public:
 
 	// construction
 	shared_str() {}
+
+	~shared_str()
+	{
+		// The final owner must release the entry before freeing its container.
+		p_ = nullptr;
+	}
 
 	shared_str(str_c rhs)
 	{
