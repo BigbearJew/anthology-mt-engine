@@ -131,9 +131,13 @@ void CPEDef::ExecuteAnimate(Particle* particles, u32 p_cnt, float dt)
 }
 
 void CPEDef::ExecuteCollision(PAPI::Particle* particles, u32 p_cnt, float dt, CParticleEffect* owner,
-                              CollisionCallback cb)
+                                CollisionCallback cb)
 {
 	pVector pt, n;
+#ifndef _EDITOR
+	const bool seasonalSnow = m_Name == "anthology_seasons\\effects\\snow_balanced";
+	u32 snowBudget = 256;
+#endif
 	// Must traverse list in reverse order so Remove will work
 	for (int i = p_cnt - 1; i >= 0; i--)
 	{
@@ -155,6 +159,15 @@ void CPEDef::ExecuteCollision(PAPI::Particle* particles, u32 p_cnt, float dt, CP
 #else
 				collide::rq_result RQ;
 				collide::rq_target RT = m_Flags.is(dfCollisionDyn) ? collide::rqtBoth : collide::rqtStatic;
+				if (seasonalSnow && RT == collide::rqtBoth)
+				{
+					// Existing static snow collision remains unlimited by this budget.
+					// Dynamic model queries are restricted to the nearby visible volume.
+					if (!snowBudget || Device.vCameraPosition.distance_to_sqr(m.pos) > 100.f ||
+						m.pos.y > Device.vCameraPosition.y + 2.f)
+						RT = collide::rqtStatic;
+					else --snowBudget;
+				}
 				if (g_pGameLevel->ObjectSpace.RayPick(m.posB, dir, dist, RT, RQ,NULL))
 				{
 					pt.mad(m.posB, dir, RQ.range);

@@ -148,6 +148,19 @@ void CBlender_svp_quality::Compile(CBlender_Compile& C)
 		C.r_End();
 		return;
 	}
+	if (C.iElement == 4)
+	{
+		C.r_Pass("svp_temporal", "svp_live_taa", FALSE, FALSE, FALSE);
+		C.r_dx10Texture("s_svp_scene", r2_RT_generic0);
+		C.r_dx10Texture("s_svp_history", "$user$svp_taa_previous");
+		C.r_dx10Texture("s_position", r2_RT_P);
+		C.r_dx10Texture("s_svp_motion", r2_RT_ssfx_motion_vectors);
+		C.r_dx10Texture("s_svp_reactive", "$user$svp_reactive_capture");
+		C.r_dx10Sampler("smp_rtlinear");
+		C.r_dx10Sampler("smp_nofilter");
+		C.r_End();
+		return;
+	}
 
 	C.r_Pass("stub_screen_space", "svp_quality", FALSE, FALSE, FALSE);
 	C.r_dx10Texture("s_image", r2_RT_secondVP_capture);

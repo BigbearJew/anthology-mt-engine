@@ -97,6 +97,7 @@ bool CDLSSWrapper::Draw(const DrawParameters& params)
 	eval.Feature.InSharpness = 0.f;
     eval.pInDepth = params.depth;
     eval.pInMotionVectors = params.motionVectors;
+    eval.pInBiasCurrentColorMask = params.reactive;
     eval.InRenderSubrectDimensions.Width = params.renderWidth;
     eval.InRenderSubrectDimensions.Height = params.renderHeight;
     eval.InJitterOffsetX = params.jitterX;

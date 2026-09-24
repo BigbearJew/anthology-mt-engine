@@ -159,6 +159,14 @@ LPCSTR get_weather()
 	return (*g_pGamePersistent->Environment().GetWeather());
 }
 
+bool weather_exists(LPCSTR name)
+{
+	if (!g_pGamePersistent || !name || !*name)
+		return false;
+	const auto& cycles = g_pGamePersistent->Environment().WeatherCycles;
+	return cycles.find(shared_str(name)) != cycles.end();
+}
+
 // demonized: get current weather interpolation
 float get_weather_weight()
 {
@@ -2525,6 +2533,7 @@ void CLevel::script_register(lua_State* L)
 #endif
 
 			def("get_weather", get_weather),
+			def("weather_exists", weather_exists),
 			def("set_weather", set_weather),
 			def("set_weather_fx", set_weather_fx),
 			def("start_weather_fx_from_time", start_weather_fx_from_time),

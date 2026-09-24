@@ -112,7 +112,7 @@ public:
         if (previous)
             FinishGeneration(previous, true);
 
-        const auto state = std::make_shared<GenerationState>();
+        const auto state = xr_make_shared<GenerationState>();
         {
             std::lock_guard<std::mutex> guard(mutex);
             state->id = ++next_generation;
@@ -144,7 +144,7 @@ public:
             current_generation->cancelled)
             return {};
 
-        const auto batch = std::make_shared<BatchState>();
+        const auto batch = xr_make_shared<BatchState>();
         batch->generation = current_generation;
         return Batch(batch);
     }
@@ -276,7 +276,7 @@ private:
         std::exception_ptr failure;
         std::condition_variable completed;
         std::condition_variable pumps_idle;
-        std::shared_ptr<xr_task_group> pumps = std::make_shared<xr_task_group>();
+        std::shared_ptr<xr_task_group> pumps = xr_make_shared<xr_task_group>();
     };
 
     struct BatchState
@@ -300,7 +300,9 @@ private:
 
     mutable std::mutex mutex;
     std::mutex lifecycle_mutex;
-    std::array<std::deque<WorkItem>, PriorityCount> queues;
+    // Keep queue blocks and maps on one explicit allocator across engine TUs.
+    // Inline global new/delete replacements cannot safely own STL storage.
+    std::array<std::deque<WorkItem, xalloc<WorkItem>>, PriorityCount> queues;
     std::shared_ptr<GenerationState> current_generation;
     GenerationId next_generation = 0;
     std::atomic_uint32_t worker_limit;

@@ -176,6 +176,7 @@ public:
 	void UpdateFromCamera(const CCameraBase* C);
 
 	void ApplyDevice(float _viewport_near);
+	static bool RestoreLivePiPMainView();
 	static void ResetPP();
 
 	CCameraManager(bool bApplyOnUpdate);

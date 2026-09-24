@@ -1,0 +1,20 @@
+-- Native console options keep one source of truth in user.ltx.
+function on_mcm_load()
+    return {id="anthology_upscaler", sh=true, gr={
+        {id="about", type="desc", text="ui_mcm_anthology_upscaler_about"},
+        {id="mode", type="list", val=0, cmd="r4_upscaler", vid=true,
+            content={{"off","anthology_upscaler_off"},{"fsr3","anthology_upscaler_fsr3"},{"dlss","anthology_upscaler_dlss"}}},
+        {id="quality", type="list", val=0, cmd="r4_upscaler_quality", vid=true,
+            content={{"native","anthology_upscaler_native"},{"quality","anthology_upscaler_quality"},
+                {"balanced","anthology_upscaler_balanced"},{"performance","anthology_upscaler_performance"},
+                {"ultra_performance","anthology_upscaler_ultra"},{"custom","anthology_upscaler_custom"}}},
+        {id="scale", type="track", val=2, cmd="r4_upscaler_custom_scale", vid=true,
+            min=0.33,max=1.0,step=0.01,prec=2},
+        {id="sharpness", type="track", val=2, cmd="r4_upscaler_sharpness",
+            min=0,max=1,step=0.05,prec=2},
+        {id="pip_effects", type="check", val=1, cmd="scope_lense_live_effects", bool_to_num=true},
+        {id="pip_mode", type="list", val=2, cmd="scope_lense_temporal_mode", no_str=true,
+            content={{2,"ui_mcm_anthology_upscaler_pip_live"},{1,"ui_mcm_anthology_upscaler_pip_sparse"},
+                {0,"ui_mcm_anthology_upscaler_pip_legacy"}}},
+    }}
+end

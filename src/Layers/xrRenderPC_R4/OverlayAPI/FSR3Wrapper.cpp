@@ -117,8 +117,9 @@ bool CFSR3Wrapper::Draw(const DrawParameters& params)
     desc.depth = ffxGetResourceDX11(params.depth, GetFfxResourceDescriptionDX11(params.depth), nullptr);
     desc.motionVectors = ffxGetResourceDX11(params.motionVectors, GetFfxResourceDescriptionDX11(params.motionVectors), nullptr);
     desc.exposure = ffxGetResourceDX11(nullptr, FfxResourceDescription{}, nullptr);
-    desc.reactive = ffxGetResourceDX11(nullptr, FfxResourceDescription{}, nullptr);
-    desc.transparencyAndComposition = ffxGetResourceDX11(nullptr, FfxResourceDescription{}, nullptr);
+    desc.reactive = ffxGetResourceDX11(params.reactive,
+        params.reactive ? GetFfxResourceDescriptionDX11(params.reactive) : FfxResourceDescription{}, nullptr);
+    desc.transparencyAndComposition = desc.reactive;
     desc.dilatedDepth = ffxGetResourceDX11(m_dilatedDepth, GetFfxResourceDescriptionDX11(m_dilatedDepth), nullptr,
         FFX_RESOURCE_STATE_UNORDERED_ACCESS);
     desc.dilatedMotionVectors = ffxGetResourceDX11(m_dilatedMotion, GetFfxResourceDescriptionDX11(m_dilatedMotion), nullptr,

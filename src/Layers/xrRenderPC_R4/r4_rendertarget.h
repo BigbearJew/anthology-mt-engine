@@ -136,6 +136,7 @@ public:
 	ref_rt rt_Depth; // Z-buffer like - initial depth
 	ref_rt rt_UpscaleInput; // low-resolution post-process result
 	ref_rt rt_UpscaleDepth; // low-resolution R32_FLOAT hardware-depth export
+	ref_rt rt_UpscaleReactive; // forward transparency / animated shading mask
 	ref_rt rt_UpscaleOutput; // full-resolution FSR/DLSS result
 	ref_rt rt_UpscaleHudDepth;
 	ref_rt rt_UpscalePost; // display-resolution tone map and screen-space result
@@ -163,6 +164,15 @@ public:
 	ref_rt rt_secondVP;	// 32bit		(r,g,b,a) --//#SM+#-- +SecondVP+
 	ref_rt rt_secondVP_capture;
 	ref_rt rt_secondVP_scene;
+	ref_rt rt_svpTemporal[2];
+	ref_texture t_svpTemporalPrevious;
+	u32 m_svpTemporalIndex = 0, m_svpTemporalFrame = u32(-1), m_svpTemporalWidth = 0;
+	Fmatrix m_svpTemporalView, m_svpTemporalProjection;
+	light* m_sssPreviousLights[8] = {};
+	Fvector m_sssPreviousPositions[8];
+	u32 m_sssPreviousFrame = u32(-1);
+	u32 m_svpLastActiveTime = 0, m_svpBudgetCheckTime = 0;
+	void trim_svp_idle_resources();
 	u32 m_svpSceneFrame = u32(-1);
 	ref_rt rt_svpReactiveBefore[2], rt_svpReactiveMask[2];
 	ref_texture t_svpReactiveBefore;

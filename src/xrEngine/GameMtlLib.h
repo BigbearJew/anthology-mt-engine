@@ -3,6 +3,7 @@
 #define GameMtlLibH
 //---------------------------------------------------------------------------
 #pragma once
+#include "../xrCore/RuntimeSeason.h"
 
 #define GAMEMTL_CURRENT_VERSION 0x0001
 //----------------------------------------------------
@@ -262,6 +263,7 @@ class MTL_EXPORT_API CGameMtlLibrary
 	BENCH_SEC_SCRAMBLEMEMBER1
 
 	GameMtlVec materials;
+	GameMtlVec winter_materials;
 	GameMtlPairVec material_pairs;
 
 #ifndef _EDITOR
@@ -283,6 +285,8 @@ public:
 
 	IC void Unload()
 	{
+		for (auto& material : winter_materials) xr_delete(material);
+		winter_materials.clear();
 #ifndef _EDITOR
 		material_count = 0;
 		material_pairs_rt.clear();
@@ -357,6 +361,8 @@ public:
 	IC SGameMtl* GetMaterialByIdx(u16 idx)
 	{
 		VERIFY(idx < (u16)materials.size());
+		if (idx < winter_materials.size() && winter_materials[idx] && anthology::runtime_season() == 4)
+			return winter_materials[idx];
 		return materials[idx];
 	}
 

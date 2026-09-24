@@ -1,0 +1,38 @@
+-- Isolated physical freeze/thaw test. Never ship.
+local stage,start,jump=0,nil,nil
+local surface=-35.31079
+function first_update()
+    get_console():execute('g_god on');get_console():execute('main_menu off')
+    device():pause(false);level.enable_input();start=time_global()
+end
+function update()
+    if not start or (device().precache_frame or 0)>0 then return end
+    db.actor.health=1;db.actor.power=1
+    local elapsed=time_global()-start
+    if jump and elapsed>300 then level.release_action(jump);jump=nil end
+    if elapsed<10000 then return end
+    local c=get_console();local pos=db.actor:position()
+    printf('V156_ICE_PHYS stage=%s position=%s,%s,%s surface=%s',stage,pos.x,pos.y,pos.z,surface)
+    if stage==0 then
+        c:execute('r__flora_style 4');db.actor:activate_slot(0)
+        level.remove_cam_custom_position_direction()
+        db.actor:set_actor_position(vector():set(-240,surface+3,-380),false,false)
+        jump=bind_to_dik(key_bindings.kJUMP);level.press_action(jump)
+    elseif stage==1 then
+        assert(math.abs(pos.y-surface)<.4,'actor did not settle on ice y='..pos.y)
+        c:execute('screenshot winter_physics_frozen');c:execute('r__flora_style 6')
+        jump=bind_to_dik(key_bindings.kJUMP);level.press_action(jump)
+    elseif stage==2 then
+        assert(pos.y<surface-.4,'actor did not fall through thawed water y='..pos.y)
+        c:execute('screenshot winter_physics_thawed')
+        printf('V154_VALIDATION PASS');c:execute('quit');start=nil;return
+    end
+    stage=stage+1;start=time_global()
+end
+function on_game_start()
+    local original=ui_mcm.get
+    ui_mcm.get=function(id,...)if id=='anthology_runtime_seasons/calendar' then return false end return original(id,...)end
+    RegisterScriptCallback('actor_on_first_update',first_update)
+    RegisterScriptCallback('actor_on_update',update)
+    RegisterScriptCallback('on_loading_screen_key_prompt',function()device():pause(false)end)
+end

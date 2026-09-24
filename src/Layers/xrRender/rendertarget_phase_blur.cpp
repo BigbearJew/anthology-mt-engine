@@ -704,7 +704,7 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
 	if (Lights_Array)
 	{
 		for (int slot = 0; slot < 8; slot++)
-			Lights_Array[slot].set(0, 0, 0, 0);
+			Lights_Array[slot].set(0, 0, 0, 1);
 
 		xr_vector<light*> LightsSort;
 		bool CheckPackage = true;
@@ -860,6 +860,21 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
 		}
 	}
 
+    Fvector4 historyValidity[2];
+    historyValidity[0].set(0,0,0,0); historyValidity[1].set(0,0,0,0);
+    const bool adjacent = Device.dwFrame - m_sssPreviousFrame <= 2 && !Device.dwPrecacheFrame;
+    for (u32 slot = 0; slot < 8; ++slot)
+    {
+        light* current = LightSlot[slot];
+        const bool valid = current && current->flags.bActive && adjacent &&
+            m_sssPreviousLights[slot] == current &&
+            current->position.distance_to_sqr(m_sssPreviousPositions[slot]) < .0001f;
+        (&historyValidity[slot / 4].x)[slot % 4] = valid ? 1.f : 0.f;
+        m_sssPreviousLights[slot] = current;
+        if (current) m_sssPreviousPositions[slot] = current->position;
+    }
+    m_sssPreviousFrame = Device.dwFrame;
+    RCache.set_c("sss_light_history", historyValidity[0]);
 	RCache.set_Geometry(g_combine);
 	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 
@@ -886,6 +901,7 @@ void CRenderTarget::phase_ssfx_sss_ext(light_Package& LP)
 	RCache.set_c("m_current", Matrix_current);
 	RCache.set_c("m_previous", Matrix_previous);
 	RCache.set_c("id_offset", 1);
+	RCache.set_c("sss_light_history", historyValidity[1]);
 	RCache.get_ConstantDirect(strLights, 4 * sizeof(Fvector4) * 2, 0, 0, &LightData);
 
 	RCache.set_Geometry(g_combine);

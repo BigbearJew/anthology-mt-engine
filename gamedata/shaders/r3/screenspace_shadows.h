@@ -40,13 +40,20 @@ float SSFX_ScreenSpaceShadows(float4 P, float3 N, float2 tc, float HudMask, uint
 		ray_thick = 1.0f;
 	}
 
-	RayTrace sss_ray = SSFX_ray_init(P, -L_sun_dir_e, ray_len * ssfx_sss.x, SSFX_SSS_DIR_QUALITY, hash12(tc * 100 + SSFX_PIP_SSS_NOISE_TIME * 100));
+	float actual_length = ray_len * ssfx_sss.x;
+    // A ray crossing the camera plane projects backwards and creates phantom
+    // occluders when the sun or a lamp is behind the viewer.
+    if (L_sun_dir_e.z > 0) actual_length = min(actual_length, max(P.z-0.02,0) / L_sun_dir_e.z);
+    if (actual_length < 0.0001) return 1;
+    float noise_time = IsHUD ? 0 : SSFX_PIP_SSS_NOISE_TIME;
+    RayTrace sss_ray = SSFX_ray_init(P, -L_sun_dir_e, actual_length, SSFX_SSS_DIR_QUALITY, hash12(tc * 100 + noise_time * 100));
 
 	[unroll (SSFX_SSS_DIR_QUALITY)]
 	for (int i = 0; i < SSFX_SSS_DIR_QUALITY; i++)
 	{
 		// Break the march if ray go out of screen...
-		if (!SSFX_is_valid_uv(sss_ray.r_pos))
+		if (!SSFX_is_valid_uv(sss_ray.r_pos) || sss_ray.r_length < 0.000001
+            || length(sss_ray.r_pos-sss_ray.r_start) > sss_ray.r_length)
 			return 1;
 
 		// Sample current ray pos ( x = difference | y = sample depth | z = current ray len )
@@ -69,7 +76,7 @@ float SSFX_ScreenSpaceShadows(float4 P, float3 N, float2 tc, float HudMask, uint
 			return saturate(1.0f - G_SSS_INTENSITY);
 
 		// Step the ray + Noise
-		sss_ray.r_pos += sss_ray.r_step * (1.0f + hash12((tc * 100) + SSFX_PIP_SSS_NOISE_TIME * 100));
+		sss_ray.r_pos += sss_ray.r_step * (1.0f + hash12((tc * 100) + noise_time * 100));
 	}
 
 	// None
@@ -109,13 +116,18 @@ float SSFX_ScreenSpaceShadows_Point(float4 P, float2 tc, float3 LightPos, float 
 		}
 	}
 
-	RayTrace sss_ray = SSFX_ray_init(P, L_dir, ray_len * ssfx_sss.y, SSFX_SSS_OMNI_QUALITY, hash12(tc * 100 + SSFX_PIP_SSS_NOISE_TIME * 100));
+	float actual_length = min(ray_len * ssfx_sss.y, length(LightPos-P.xyz));
+    if (L_dir.z < 0) actual_length = min(actual_length, max(P.z-0.02,0) / -L_dir.z);
+    if (actual_length < 0.0001) return 1;
+    float noise_time = IsHUD ? 0 : SSFX_PIP_SSS_NOISE_TIME;
+    RayTrace sss_ray = SSFX_ray_init(P, L_dir, actual_length, SSFX_SSS_OMNI_QUALITY, hash12(tc * 100 + noise_time * 100));
 
 	[unroll (SSFX_SSS_OMNI_QUALITY)]
 	for (int i = 0; i < SSFX_SSS_OMNI_QUALITY; i++)
 	{
 		// Break the march if ray go out of screen...
-		if (!SSFX_is_valid_uv(sss_ray.r_pos))
+		if (!SSFX_is_valid_uv(sss_ray.r_pos) || sss_ray.r_length < 0.000001
+            || length(sss_ray.r_pos-sss_ray.r_start) > sss_ray.r_length)
 			return 1;
 
 		// Sample current ray pos ( x = difference | y = sample depth | z = current ray len )
@@ -138,7 +150,7 @@ float SSFX_ScreenSpaceShadows_Point(float4 P, float2 tc, float3 LightPos, float 
 			return 1.0f - saturate(G_SSS_INTENSITY - smoothstep( SSFX_SSS_OMNI_QUALITY * 0.5f, SSFX_SSS_OMNI_QUALITY + 1, i));
 
 		// Step the ray
-		sss_ray.r_pos += sss_ray.r_step * (1.0f + hash12((tc * 100) + SSFX_PIP_SSS_NOISE_TIME * 100));
+		sss_ray.r_pos += sss_ray.r_step * (1.0f + hash12((tc * 100) + noise_time * 100));
 	}
 
 	return 1;

@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8'?>
+<string_table>
+  <string id="ui_mcm_anthology_upscaler_pip_mode">
+    <text>PiP rendering mode</text>
+  </string>
+  <string id="ui_mcm_anthology_upscaler_pip_mode_desc">
+    <text>Live PiP renders a fresh scene each frame, with separate TAA and a cropped lens view that preserves pixel density. Reuse interval only applies to the two older modes.</text>
+  </string>
+  <string id="ui_mcm_anthology_upscaler_pip_live">
+    <text>Every frame + TAA (experimental)</text>
+  </string>
+  <string id="ui_mcm_anthology_upscaler_pip_sparse">
+    <text>Reuse with reprojection</text>
+  </string>
+  <string id="ui_mcm_anthology_upscaler_pip_legacy">
+    <text>Legacy reuse</text>
+  </string>
+</string_table>

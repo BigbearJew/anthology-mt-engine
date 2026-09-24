@@ -1,0 +1,45 @@
+local OPTION_ROOT = "anthology_runtime_seasons"
+local COMMAND = "r__flora_style"
+
+function on_mcm_load()
+    -- The loose gamedata overlay can also be loaded by the stock executable.
+    -- Hide this command-backed menu there: older engines return nil for an
+    -- unknown console command and MCM 1.7.x otherwise passes it to round_idp.
+    local current = get_console_cmd and tonumber(get_console_cmd(0, COMMAND))
+    if current == nil then
+        return nil
+    end
+
+    local options = {
+        id = OPTION_ROOT,
+        sh = true,
+        gr = {
+            {
+                id = "header",
+                type = "slide",
+                link = "AMCM_Banner.dds",
+                text = "ui_mcm_anthology_runtime_seasons_header",
+                size = {512, 50},
+                spacing = 20,
+            },
+            {id="calendar", type="check", val=1, def=true},
+            {
+                id = "style",
+                type = "list",
+                val = 2,
+                no_str = true, -- Use complete localization IDs across MCM versions.
+                cmd = COMMAND,
+                hint = "anthology_runtime_seasons_style",
+                ["content"] = {
+                    {1, "ui_mcm_anthology_runtime_seasons_style_lst_summer"},
+                    {2, "ui_mcm_anthology_runtime_seasons_style_lst_autumn"},
+                    {3, "ui_mcm_anthology_runtime_seasons_style_lst_dead"},
+                    {4, "ui_mcm_anthology_runtime_seasons_style_lst_winter"},
+                    {5, "ui_mcm_anthology_runtime_seasons_style_lst_late_autumn"},
+                    {6, "ui_mcm_anthology_runtime_seasons_style_lst_default"},
+                },
+            },
+        },
+    }
+    return options
+end

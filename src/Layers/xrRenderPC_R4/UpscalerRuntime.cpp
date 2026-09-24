@@ -191,7 +191,7 @@ void CAnthologyUpscalerRuntime::UpdateJitter(u32 frameIndex)
 }
 
 bool CAnthologyUpscalerRuntime::Dispatch(ID3D11Resource* color, ID3D11Resource* motion,
-	ID3D11Resource* depth, ID3D11Resource* output, bool resetHistory)
+	ID3D11Resource* depth, ID3D11Resource* output, ID3D11Resource* reactive, bool resetHistory)
 {
 	// Motion history refers to the last main render. A failed resolve, loading,
 	// menu gap or a camera cut cannot reuse a vendor history from an older view.
@@ -239,6 +239,7 @@ bool CAnthologyUpscalerRuntime::Dispatch(ID3D11Resource* color, ID3D11Resource* 
     if (m_mode == AnthologyUpscalerFSR3)
     {
         CFSR3Wrapper::DrawParameters params;
+        params.reactive = reactive;
         params.deviceContext = HW.pContext;
         params.unresolvedColor = color;
         params.motionVectors = motion;
@@ -268,6 +269,7 @@ bool CAnthologyUpscalerRuntime::Dispatch(ID3D11Resource* color, ID3D11Resource* 
     if (m_mode == AnthologyUpscalerDLSS)
     {
         CDLSSWrapper::DrawParameters params;
+        params.reactive = reactive;
         params.unresolvedColor = color;
         params.motionVectors = motion;
         params.depth = depth;

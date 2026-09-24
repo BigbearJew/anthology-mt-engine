@@ -498,7 +498,10 @@ bool CRenderTarget::begin_svp_quality_pass()
     }
 	// At native resolution only the two persistent SSFX histories need isolation.
 	// Scratch targets are overwritten by the following main frame as before.
-	if (ps_scope_lense_quality_percent >= 100 && !m_upscalerActive)
+	const u32 quality = clampr(ps_scope_lense_temporal_mode == 2
+		? ps_scope_lense_quality_percent * g_scope_lense_pixel_quality / 100
+		: ps_scope_lense_quality_percent, 25, 100);
+	if (quality >= 100 && !m_upscalerActive)
 	{
 		if (rt_ssfx_sss && rt_ssfx_sss->valid() && !m_svpSssHistory)
 			m_svpSssHistory.create("$user$svp_sss_history", m_renderWidth, m_renderHeight, rt_ssfx_sss->fmt);
@@ -509,7 +512,6 @@ bool CRenderTarget::begin_svp_quality_pass()
 		m_svpEffectHistoryActive = true;
 		return true;
 	}
-	const u32 quality = clampr(ps_scope_lense_quality_percent, 25, 100);
 	// PiP has no vendor temporal reconstruction of its own. Its quality setting
 	// is relative to the display, never to the reduced DLSS/FSR main view.
 	const u32 width = quality == 100 ? Device.dwWidth : _max(320u, ((Device.dwWidth * quality / 100u) + 1u) & ~1u);
@@ -959,6 +961,7 @@ CRenderTarget::CRenderTarget()
 			// sampled hardware depth to the single-channel float format required by
 			// temporal upscalers.
 			rt_UpscaleDepth.create(r4_RT_upscale_depth, w, h, D3DFMT_R32F, 1);
+			rt_UpscaleReactive.create("$user$upscale_reactive", w, h, D3DFMT_R16F, 1);
 			rt_UpscaleOutput.create(r4_RT_upscale_output, Device.dwWidth, Device.dwHeight,
 				D3DFMT_A16B16G16R16F, 1, true);
 			rt_UpscalePost.create(r4_RT_upscale_post, Device.dwWidth, Device.dwHeight,

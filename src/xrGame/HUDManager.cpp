@@ -338,7 +338,8 @@ void CHUDManager::RenderUI()
 				PROF_EVENT("Wait current MT UI frame");
 				u32 spin_count = 0;
 				while (mt_ui && b_online &&
-					ui_update_frame.load(std::memory_order_acquire) != Device.dwFrame)
+					ui_update_frame.load(std::memory_order_acquire) !=
+                        Device.dwFrame - (Device.IsSVPRenderOnlyFrame() ? 1u : 0u))
 				{
 					if (++spin_count < 256)
 						_mm_pause();

@@ -216,6 +216,20 @@ void CGameMtlLibrary::Load()
 		Msg("* [materials.ltx] applied: added=%u changed=%u", addedMaterials, changedMaterials);
 	}
 	materialOverridesMs = loadTimer.GetElapsed_ms() - baseMaterialsMs;
+	// SSS ice material behavior, switched through immutable alternate records.
+	// Preserve IDs, material pairs and pack-specific radiation/damage factors.
+	winter_materials.resize(materials.size(), nullptr);
+	for (u32 index = 0; index < materials.size(); ++index)
+	{
+		const auto name = NormalizeMaterialName(materials[index]->m_Name.c_str());
+		if (name != "materials\\water" && name != "materials\\water_radiation") continue;
+		SGameMtl* ice = xr_new<SGameMtl>(*materials[index]);
+		ice->Flags.set(SGameMtl::flPassable | SGameMtl::flSlowDown, FALSE);
+		ice->fPHFriction = 0.25f;
+		ice->fPHDamping = ice->fPHSpring = 0.7f;
+		ice->fPHBounceStartVelocity = ice->fPHBouncing = 0.f;
+		winter_materials[index] = ice;
+	}
 
 #ifdef DEBUG_PRINT_MATERIAL
 	for (const auto& mat : materials) {

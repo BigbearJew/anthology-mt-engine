@@ -11,6 +11,7 @@
 
 #include "../xrRender/QueryHelper.h"
 #include "UpscalerRuntime.h"
+#include <dxgi1_4.h>
 
 namespace
 {
@@ -700,12 +701,64 @@ void CRenderTarget::phase_svp_scene()
 		return;
 	// Ordinary optics return before the display SMAA pass in phase_combine.
 	// Resolve edges here, once per fresh capture, in the active PiP RT bank.
-	phase_smaa();
+	const bool liveTaa = ps_scope_lense_temporal_mode == 2 && RImplementation.o.ssfx_motionvectors &&
+		!RImplementation.o.dx10_msaa;
+	if (!liveTaa) phase_smaa();
 	RCache.set_Stencil(FALSE);
 	// Read generic0 while it still belongs to the active PiP bank, before LUT,
 	// bloom composition and postprocess. Main view runs those effects once.
 	unbind_svp_resources();
-	draw_svp_scene(rt_secondVP_scene);
+	if (liveTaa)
+	{
+		if (!t_svpTemporalPrevious) t_svpTemporalPrevious.create("$user$svp_taa_previous");
+		if (!rt_svpTemporal[0] || rt_svpTemporal[0]->dwWidth != m_renderWidth || rt_svpTemporal[0]->dwHeight != m_renderHeight)
+		{
+			t_svpTemporalPrevious->surface_set(nullptr);
+            rt_svpTemporal[0].destroy(); rt_svpTemporal[1].destroy();
+            rt_secondVP_scene.destroy();
+            rt_secondVP_scene.create("$user$viewport2_scene", m_renderWidth, m_renderHeight, rt_secondVP->fmt);
+            rt_svpTemporal[0].create("$user$svp_taa0", m_renderWidth, m_renderHeight, D3DFMT_A16B16G16R16F);
+			rt_svpTemporal[1].create("$user$svp_taa1", m_renderWidth, m_renderHeight, D3DFMT_A16B16G16R16F);
+			const float clear[4] = {};
+			HW.pContext->ClearRenderTargetView(rt_svpTemporal[0]->pRT, clear);
+			HW.pContext->ClearRenderTargetView(rt_svpTemporal[1]->pRT, clear);
+		}
+		const bool valid = Device.dwFrame - m_svpTemporalFrame <= 2 && !Device.dwPrecacheFrame &&
+			m_svpTemporalWidth == m_renderWidth &&
+			_abs(m_svpTemporalProjection._11 - Device.mProject._11) < .001f;
+		Fmatrix inverse, currentToPrevious;
+		inverse.invert(Device.mView);
+		currentToPrevious.mul(valid ? m_svpTemporalView : Device.mView, inverse);
+		t_svpTemporalPrevious->surface_set(rt_svpTemporal[m_svpTemporalIndex]->pSurface);
+		RCache.set_Element(s_svp_quality->E[4]);
+		RCache.set_c("svp_taa_control", valid ? 1.f : 0.f,
+			m_svpReactiveMaskFrame[1] == Device.dwFrame ? 1.f : 0.f, 0.f, 0.f);
+		RCache.set_c("svp_taa_previous_view", currentToPrevious);
+		const u32 next = m_svpTemporalIndex ^ 1;
+		draw_svp_scene(rt_svpTemporal[next], -1);
+		unbind_svp_resources();
+		t_svpTemporalPrevious->surface_set(nullptr);
+		// Convert FP16 history into the existing lens texture format.
+		rt_Generic_0->pTexture->surface_set(rt_svpTemporal[next]->pSurface);
+		draw_svp_scene(rt_secondVP_scene);
+		unbind_svp_resources();
+		rt_Generic_0->pTexture->surface_set(rt_Generic_0->pSurface);
+		m_svpTemporalIndex = next;
+		m_svpTemporalFrame = Device.dwFrame;
+		m_svpTemporalWidth = m_renderWidth;
+		m_svpTemporalView = Device.mView;
+		m_svpTemporalProjection = Device.mProject;
+	}
+	else
+	{
+        m_svpTemporalFrame = u32(-1);
+        if (rt_secondVP_scene->dwWidth != Device.dwWidth || rt_secondVP_scene->dwHeight != Device.dwHeight)
+        {
+            rt_secondVP_scene.destroy();
+            rt_secondVP_scene.create("$user$viewport2_scene", Device.dwWidth, Device.dwHeight, rt_secondVP->fmt);
+        }
+        draw_svp_scene(rt_secondVP_scene);
+	}
 	m_svpSceneFrame = Device.dwFrame;
 	if (svp_motion_supported() && ensure_svp_motion_targets(rt_Position->dwWidth, rt_Position->dwHeight))
 	{
@@ -722,7 +775,7 @@ void CRenderTarget::phase_svp_scene()
 
 bool CRenderTarget::svp_motion_supported() const
 {
-	return m_svpMotionOwnerSupport && ps_scope_lense_temporal_mode != 0 && !RImplementation.o.dx10_msaa &&
+	return m_svpMotionOwnerSupport && ps_scope_lense_temporal_mode == 1 && !RImplementation.o.dx10_msaa &&
 		RImplementation.o.ssfx_motionvectors && rt_Position && rt_Position->valid() &&
 		rt_ssfx_motion_vectors && rt_ssfx_motion_vectors->valid() &&
 		rt_Position->dwWidth == rt_ssfx_motion_vectors->dwWidth &&
@@ -771,8 +824,12 @@ void CRenderTarget::begin_svp_live_effects()
     const u32 view = Device.m_SecondViewport.IsSVPFrame() ? 1 : 0;
     m_svpReactiveBeforeFrame[view] = u32(-1);
     m_svpReactiveMaskFrame[view] = u32(-1);
-    if (!ps_scope_lense_live_effects || ps_scope_lense_update_interval <= 1 ||
-        !Device.m_SecondViewport.IsSVPActive() || !svp_motion_supported())
+    const bool vendorMask = view == 0 && m_upscalerActive;
+    const bool pipMask = ps_scope_lense_live_effects && ps_scope_lense_update_interval > 1 &&
+        Device.m_SecondViewport.IsSVPActive() && svp_motion_supported();
+    const bool liveTaaMask = view == 1 && ps_scope_lense_temporal_mode == 2 &&
+        RImplementation.o.ssfx_motionvectors && !RImplementation.o.dx10_msaa;
+    if (!vendorMask && !pipMask && !liveTaaMask)
         return;
     const u32 width = rt_Generic_0->dwWidth, height = rt_Generic_0->dwHeight;
     unbind_svp_resources();
@@ -815,8 +872,50 @@ void CRenderTarget::end_svp_live_effects()
     RImplementation.rmNormal();
 }
 
+void CRenderTarget::trim_svp_idle_resources()
+{
+	if (Device.m_SecondViewport.IsSVPActive())
+	{
+		m_svpLastActiveTime = Device.dwTimeGlobal;
+		return;
+	}
+	if (Device.dwTimeGlobal - m_svpLastActiveTime < 5000 ||
+		Device.dwTimeGlobal - m_svpBudgetCheckTime < 5000 ||
+		(m_svpRtBank.empty() && !rt_svpTemporal[0] && !rt_svpMotionMap[0])) return;
+	m_svpBudgetCheckTime = Device.dwTimeGlobal;
+	IDXGIAdapter3* adapter = nullptr;
+	if (!HW.m_pAdapter || FAILED(HW.m_pAdapter->QueryInterface(__uuidof(IDXGIAdapter3), (void**)&adapter))) return;
+	DXGI_QUERY_VIDEO_MEMORY_INFO memory = {};
+	const HRESULT status = adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memory);
+	adapter->Release();
+	if (FAILED(status) || !memory.Budget || double(memory.CurrentUsage) < double(memory.Budget) * .90) return;
+	// Release inactive lens resources instead of lowering texture quality or
+	// waiting for the OS to evict live world textures. Histories restart on ADS.
+	unbind_svp_resources();
+	if (t_svpTemporalPrevious) t_svpTemporalPrevious->surface_set(nullptr);
+	if (t_svpMotionPrevious) t_svpMotionPrevious->surface_set(nullptr);
+	if (t_svpMotionCurrent) t_svpMotionCurrent->surface_set(nullptr);
+	if (m_svpMainReflection) m_svpMainReflection->surface_set(nullptr);
+	if (m_svpMainEffectPosition) m_svpMainEffectPosition->surface_set(nullptr);
+	rt_svpTemporal[0].destroy(); rt_svpTemporal[1].destroy();
+	rt_svpMotionMap[0].destroy(); rt_svpMotionMap[1].destroy();
+	rt_svpMotionDepth.destroy(); rt_svpMotionOwner.destroy();
+	rt_svpReactiveBefore[1].destroy(); rt_svpReactiveMask[1].destroy();
+	if (!m_upscalerActive) { rt_svpReactiveBefore[0].destroy(); rt_svpReactiveMask[0].destroy(); }
+	m_svpRtBank.clear(); m_svpDepth.destroy();
+	m_svpSssHistory.destroy(); m_svpSsrHistory.destroy();
+	m_svpRtBankWidth = m_svpRtBankHeight = 0;
+	m_svpTemporalFrame = m_svpMotionDepthFrame = u32(-1);
+	m_svpMotionHistory = m_svpMotionSeeded = false;
+	Msg("* [GPU memory] released idle PiP targets: usage=%.1f MiB budget=%.1f MiB",
+		double(memory.CurrentUsage) / (1024.0*1024.0), double(memory.Budget) / (1024.0*1024.0));
+	u_setrt(rt_Generic_0, nullptr, nullptr, main_depth());
+	RImplementation.rmNormal();
+}
+
 void CRenderTarget::phase_svp_motion()
 {
+	trim_svp_idle_resources();
 	if (m_svpMotionOutputFrame == Device.dwFrame)
 		return;
 	m_svpMotionOutputFrame = u32(-1);
@@ -969,6 +1068,17 @@ void CRender::RenderToTarget(RRT target)
 	{
 		if (target == rtSVP)
 			Target->unbind_svp_resources();
+        if (target == rtSVP)
+        {
+            D3D11_TEXTURE2D_DESC sourceDesc = {};
+            pSource->GetDesc(&sourceDesc);
+            if ((*RT)->dwWidth != sourceDesc.Width || (*RT)->dwHeight != sourceDesc.Height)
+            {
+                const D3DFORMAT format = (*RT)->fmt;
+                RT->destroy();
+                RT->create("$user$viewport2", sourceDesc.Width, sourceDesc.Height, format, 1);
+            }
+        }
 		HW.pContext->CopyResource((*RT)->pSurface, pSource);
 		if (target == rtSVP)
 		{

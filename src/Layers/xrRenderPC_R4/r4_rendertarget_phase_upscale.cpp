@@ -13,7 +13,7 @@ void CRenderTarget::phase_upscale(bool temporal)
 	// Export display-referred color and device depth together. Integer pixel
 	// loads keep both vendor inputs aligned with the motion-vector texels.
 	if (vendorDispatch)
-		u_setrt(rt_UpscaleInput, rt_UpscaleDepth, nullptr, nullptr);
+		u_setrt(rt_UpscaleInput, rt_UpscaleDepth, rt_UpscaleReactive, nullptr);
 	else
 		u_setrt(rt_UpscaleInput, nullptr, nullptr, nullptr);
 	RImplementation.rmNormal();
@@ -31,7 +31,8 @@ void CRenderTarget::phase_upscale(bool temporal)
 	prepareVertices->set(prepareWidth, 0.f, EPS_S, 1.f, prepareColor, 1.f, 0.f);
 	RCache.Vertex.Unlock(4, g_combine->vb_stride);
 	RCache.set_Element(s_upscale->E[vendorDispatch ? 3 : 1]);
-	RCache.set_c("anthology_upscale_linear", vendorDispatch && g_AnthologyUpscaler.Mode() == AnthologyUpscalerFSR3 ? 1.f : 0.f, 0.f, 0.f, 0.f);
+	RCache.set_c("anthology_upscale_linear", vendorDispatch && g_AnthologyUpscaler.Mode() == AnthologyUpscalerFSR3 ? 1.f : 0.f,
+		m_svpReactiveMaskFrame[0] == Device.dwFrame ? 1.f : 0.f, 0.f, 0.f);
 	RCache.set_Geometry(g_combine);
 	RCache.Render(D3DPT_TRIANGLELIST, prepareOffset, 0, 4, 0, 2);
 
@@ -64,6 +65,7 @@ void CRenderTarget::phase_upscale(bool temporal)
             rt_ssfx_motion_vectors->pSurface,
 			rt_UpscaleDepth->pSurface,
             rt_UpscaleOutput->pSurface,
+            rt_UpscaleReactive->pSurface,
             resetHistory);
 		g_AnthologyUpscaler.EndGpuProfile();
 		// Both integrations submit compute work outside RCache. Release every CS

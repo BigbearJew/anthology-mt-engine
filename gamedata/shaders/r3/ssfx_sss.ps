@@ -15,6 +15,7 @@ float4x4 m_previous;
 
 Texture2D sss_image;
 Texture2D s_prev_pos;
+float4 anthology_shadow_history_jitter;
 
 float4 main(p_screen I) : SV_Target
 {
@@ -28,6 +29,7 @@ float4 main(p_screen I) : SV_Target
 #endif
 
 	float3 Motion_Vectors = s_motion_vectors.Sample(smp_nofilter, tc);
+    float2 history_uv = tc - Motion_Vectors.xy + anthology_shadow_history_jitter.xy;
 	float3 P = float3(Pos.z * (Pos2D * pos_decompression_params.zw - pos_decompression_params.xy), Pos.z);
 	float3 N = gbuf_unpack_normal(Pos.xy);
 	float mtl = gbuf_unpack_mtl(Pos.w);
@@ -50,22 +52,25 @@ float4 main(p_screen I) : SV_Target
 	float vel_history = residual_velocity * 200.0f;
 	float vel = length(Motion_Vectors.xy);
 
-	float4 prev_P = s_prev_pos.Sample(smp_rtlinear, tc - Motion_Vectors.xy);
-	float docc = saturate(abs(1.0f - P.z / prev_P.z));
+	float4 prev_P = s_prev_pos.Sample(smp_rtlinear, history_uv);
+	float docc = saturate(abs(1.0f - P.z / max(prev_P.z, 0.0001)));
 	docc *= 1.0f + 10.0f * Motion_Vectors.z;
 
 	float2 rnd = hash22(tc * 100 + timers.xx * 100) * 2.0f - 1.0f;
 	rnd = rnd * (1.0f / screen_res.xy) * 0.5f * saturate(1.0f - vel * 10.0f);
 
-	float4 prev = sss_image.Sample(smp_rtlinear, (tc + rnd) - Motion_Vectors.xy);
-	float outoffsrc = any((tc - Motion_Vectors.xy) < 0) + any((tc - Motion_Vectors.xy) > 1.0f);
+	if (Motion_Vectors.z > 0) rnd = 0;
+	float4 prev = sss_image.Sample(smp_rtlinear, history_uv + rnd);
+	float outoffsrc = any((history_uv) < 0) + any((history_uv) > 1.0f);
 	outoffsrc = lerp(outoffsrc, prev.a, 0.95f);
 
 	float2 weight = 0;
 	vel *= 30.0f * Motion_Vectors.z;
 	weight.x = saturate(0.95f - (outoffsrc + docc + vel));
 	weight.y = saturate(0.60f - (outoffsrc + docc));
-	sss.rg = lerp(float2(sss.r, docc), prev.rg, weight.xy);
+	weight.x *= 1.0 - saturate(abs(prev.r-sss.r) * 2.0);
+    if (Motion_Vectors.z > 0) weight.x = min(weight.x, 0.65);
+    sss.rg = lerp(float2(sss.r, docc), prev.rg, weight.xy);
 
 	return float4(sss.rg, 1, max(outoffsrc, lerp(saturate(vel_history), prev.w, 0.95f)));
 }

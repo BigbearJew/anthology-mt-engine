@@ -102,7 +102,8 @@ float4 sample_second_vp(float2 uv)
 
 float3 pip_capture_detail(float2 captured_uv, bool dynamic_owner)
 {
-    float3 center = scope_lense_motion.x > 0.5 ? pip_capture_dynamic(captured_uv) : pip_capture_color(captured_uv);
+    // Fresh, cropped captures also need subpixel reconstruction at the lens.
+    float3 center = pip_capture_dynamic(captured_uv);
     float sharpness = clamp(scope_lense_detail.x, 0.0, 2.0);
     [branch] if (abs(sharpness - 1.0) > 0.0001)
     {

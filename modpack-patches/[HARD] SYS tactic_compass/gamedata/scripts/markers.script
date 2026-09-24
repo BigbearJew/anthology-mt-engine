@@ -1,0 +1,454 @@
+-- Author: explorerbee --
+-- Date: 09.08.2025 --
+
+local HUD = nil
+
+local max_possible_distance = tc_variables.TC_MAX_POSSIBLE_DISTANCE
+
+local init_markers = {}
+local markers_list = {}
+local prev_obj_positions = {}
+local looted_corpses = {}
+
+local get_world_coords = markers_utils.get_world_coordinates
+local calc_distance = markers_utils.calc_distance_to_target
+local define_distance = markers_utils.define_distance_to_marker
+local define_marker_y = markers_utils.define_marker_y
+local calc_position = markers_utils.calc_position
+local set_distance_text = markers_utils.set_distance_text
+local get_config = compass_mcm.get_config
+local calc_alpha = markers_utils.calc_alpha
+local draw_arrow = markers_utils.draw_arrow
+
+local blacklisted_categories = markers_definitions.blacklisted_categories
+local marker_categories = markers_definitions.marker_categories
+local transition_types = markers_definitions.transition_types
+
+local is_show_markers = true
+
+-- Anthology performance patch. XRay map, ALife and UI access must stay on the
+-- main thread, so the expensive work is time-sliced instead of being moved to
+-- an unsafe worker thread.
+local MARKER_RENDER_INTERVAL = 33
+local MARKER_CONFIG_INTERVAL = 250
+local COLLECT_MAX_IDS_PER_SLICE = 96
+local COLLECT_BUDGET_MS = 1
+local COLLECT_SLICE_INTERVAL = 50
+local COLLECT_START_DELAY = 2000
+local VALIDATION_INTERVAL = 2000
+local VALIDATION_IDS_PER_FRAME = 8
+
+local collect_cursor = 1
+local collect_active = false
+local collect_snapshot = nil
+local next_snapshot = 0
+local next_collect_slice = 0
+local validation_queue = {}
+local validation_index = 1
+local validation_active = false
+local next_validation = 0
+
+local function is_deadbody_marker(spot_type)
+    return marker_categories[spot_type] == "deadbody"
+end
+
+local function remove_corpse_markers(corpse_id)
+    local spot_types = init_markers[corpse_id]
+    if not spot_types then
+        return
+    end
+
+    local to_remove = {}
+    for spot_type, spot_data in pairs(spot_types) do
+        if spot_data and is_deadbody_marker(spot_type) then
+            to_remove[#to_remove + 1] = spot_type
+        end
+    end
+
+    for i = 1, #to_remove do
+        remove_old_marker(corpse_id, to_remove[i])
+    end
+end
+
+local function should_skip_corpse(corpse_id, spot_type)
+    return corpse_id and is_deadbody_marker(spot_type) and looted_corpses[corpse_id]
+end
+
+class "HUDMarker" (CUIScriptWnd)
+
+function HUDMarker:__init()
+    super()
+    self._tmr = time_global()
+
+    self:InitControls()
+end
+
+function HUDMarker:InitControls()
+    self:SetAutoDelete(true)
+
+    self.tmr = 0
+    self.next_render = 0
+    self.next_config_refresh = 0
+    self.compass_pos_state = 0
+    self.marker_config_cache = {}
+    self.actor_dir = vector()
+
+    self.xml = CScriptXmlInit()
+    local xml = self.xml
+
+    self.xml:ParseFile("ui_markers.xml")
+
+    self.markers = xml:InitStatic("markers", self)
+end
+
+function HUDMarker:Update()
+    CUIScriptWnd.Update(self)
+
+    local tg = time_global()
+
+    if self.next_render <= tg then
+        self.next_render = tg + MARKER_RENDER_INTERVAL
+        self:RefreshMarkers(tg)
+    end
+
+	if self.tmr > tg then return end
+	self.tmr = tg + 250
+
+    self.markers:Show(is_show_markers and main_hud_shown())
+end
+
+function HUDMarker:CreateMarker(id, marker_type)
+    if not markers_list[id] and marker_type then
+        markers_list[id] = self.xml:InitStatic("markers:marker_" .. marker_type, self.markers)
+        markers_list[id]._anthology_pos = vector2()
+        if marker_type ~= "deadbody" then
+            markers_list[id].arrow = self.xml:InitStatic("markers:marker_" .. marker_type .. ":arrow", markers_list[id])
+        end
+    end
+
+    return markers_list[id]
+end
+
+function HUDMarker:UpdateSingleMarker(id, spot_type, spot_data, actor_pos, actor_dir, compass_pos_state, config_cache)
+    local marker_type = spot_data.category
+
+    if not marker_type then return end
+
+    local marker_world_pos = id and get_world_coords(id)
+
+    local marker_key = spot_data._anthology_marker_key
+    if not marker_key then
+        marker_key = id .. "_" .. spot_type
+        spot_data._anthology_marker_key = marker_key
+    end
+
+    if not marker_world_pos then
+        if markers_list[marker_key] then
+            markers_list[marker_key]:Show(false)
+        end
+        return
+    end
+
+    local marker = self:CreateMarker(marker_key, marker_type)
+    local distance_to_target = calc_distance(marker_world_pos, actor_pos)
+
+    local mcm_marker_config = config_cache[marker_type]
+    if not mcm_marker_config then
+        mcm_marker_config = define_distance(marker_type)
+        config_cache[marker_type] = mcm_marker_config
+    end
+    local is_enabled = mcm_marker_config.is_enabled
+    local is_distance = mcm_marker_config.is_distance
+    local is_always_visible = mcm_marker_config.is_always_visible
+    local distance_threshold = is_always_visible and max_possible_distance or mcm_marker_config.distance
+
+    if not is_enabled or not distance_to_target then
+        marker:Show(false)
+        return
+    end
+
+
+    local marker_x = calc_position(marker_world_pos, actor_pos, actor_dir, prev_obj_positions and prev_obj_positions[marker_key])
+    local marker_y = define_marker_y(compass_pos_state, marker_type)
+    local marker_alpha = calc_alpha(is_always_visible, distance_to_target, distance_threshold)
+
+    draw_arrow(actor_pos, marker_world_pos, marker, marker_alpha, marker_type)
+
+    local screen_width = 1024
+    local compass_width = self.markers:GetWidth() * 0.75
+    local marker_half_width = marker:GetWidth() * 0.75 / 2
+
+    local margin = (screen_width - compass_width) / 2
+
+    local pos_left = margin + compass_width - marker_half_width
+    local pos_right = margin + marker_half_width
+
+    if marker_x and marker_x < pos_left and marker_x > pos_right then
+        marker:Show(true)
+        marker:SetWndPos(marker._anthology_pos:set(marker_x, marker_y - 5))
+        marker:SetTextureColor(GetARGB(marker_alpha, 255, 255, 255))
+
+        set_distance_text(marker, marker_x, distance_to_target, is_distance, is_always_visible, marker_alpha)
+    else
+        marker:Show(false)
+    end
+
+    prev_obj_positions[marker_key] = marker_x
+end
+
+function HUDMarker:RefreshMarkers(tg)
+    tg = tg or time_global()
+    if self.next_config_refresh <= tg then
+        self.next_config_refresh = tg + MARKER_CONFIG_INTERVAL
+        self.compass_pos_state = get_config("tc_main/compass_sc_pos")
+        for key in pairs(self.marker_config_cache) do
+            self.marker_config_cache[key] = nil
+        end
+    end
+
+    local device_obj = device()
+    local dir = device_obj.cam_dir
+    local actor_pos = device_obj.cam_pos
+    local actor_dir = self.actor_dir:set(dir.x, 0, dir.z):normalize()
+
+    for id, spot_types in pairs(init_markers) do
+        for spot_type, spot_data in pairs(spot_types) do
+            self:UpdateSingleMarker(id, spot_type, spot_data, actor_pos, actor_dir, self.compass_pos_state, self.marker_config_cache)
+        end
+    end
+end
+
+function activate_markers()
+    if HUD == nil then
+        HUD = HUDMarker()
+        get_hud():AddDialogToRender(HUD)
+        HUD:RefreshMarkers()
+    end
+end
+
+function deactivate_markers()
+    if HUD ~= nil then
+        get_hud():RemoveDialogToRender(HUD)
+        HUD = nil
+    end
+    markers_list = {}
+    prev_obj_positions = {}
+end
+
+function HUDMarker:__finalize()
+end
+
+function map_location_added(binder, spot_type, id)
+    id = tonumber(id)
+    local category = marker_categories[spot_type] or transition_types[spot_type]
+    if not id or id < 0 or id >= 65535 or not category then return end
+    if blacklisted_categories[spot_type] or should_skip_corpse(id, spot_type) then return end
+
+    init_markers[id] = init_markers[id] or {}
+    init_markers[id][spot_type] = init_markers[id][spot_type] or { category = category }
+end
+
+function begin_marker_collection()
+    if collect_active then return end
+    collect_cursor = 1
+    collect_active = true
+    collect_snapshot = nil
+    next_collect_slice = time_global() + COLLECT_START_DELAY
+    next_snapshot = next_collect_slice
+end
+
+local function collect_marker_chunk()
+    if not collect_active then return end
+    local now = time_global()
+    if now < next_collect_slice then return end
+    next_collect_slice = now + COLLECT_SLICE_INTERVAL
+
+    -- Read the engine catalogue even if another addon owns map_location_added.
+    if not collect_snapshot and type(level.map_get_object_spots) == "function" then
+        collect_snapshot = level.map_get_object_spots() or {}
+    end
+
+    local slice_start = time_continual and time_continual() or now
+    local processed = 0
+    local limit = collect_snapshot and #collect_snapshot or 65534
+    while collect_cursor <= limit and processed < COLLECT_MAX_IDS_PER_SLICE do
+        local i = collect_cursor
+        collect_cursor = collect_cursor + 1
+        processed = processed + 1
+        if collect_snapshot then
+            local spot = collect_snapshot[i]
+            if type(spot) == "table" then
+                map_location_added(nil, spot.spot_type, spot.id)
+            end
+        elseif type(level.map_get_object_spots_by_id) == "function" then
+            for _, spot in ipairs(level.map_get_object_spots_by_id(i) or {}) do
+                map_location_added(nil, spot.spot_type, i)
+            end
+        elseif alife_object(i) then
+            for spot in pairs(marker_categories) do
+                if level.map_has_object_spot(i, spot) ~= 0 then
+                    map_location_added(nil, spot, i)
+                end
+            end
+            for spot in pairs(transition_types) do
+                if level.map_has_object_spot(i, spot) ~= 0 then
+                    map_location_added(nil, spot, i)
+                end
+            end
+        end
+        local elapsed = (time_continual and time_continual() or time_global()) - slice_start
+        if elapsed >= COLLECT_BUDGET_MS then break end
+    end
+
+    if collect_cursor > limit then
+        collect_active = false
+        collect_snapshot = nil
+        next_snapshot = now + 1000
+    end
+end
+
+local function begin_marker_validation(now)
+    for i = #validation_queue, 1, -1 do
+        validation_queue[i] = nil
+    end
+    for id, _ in pairs(init_markers) do
+        validation_queue[#validation_queue + 1] = id
+    end
+    validation_index = 1
+    validation_active = true
+    next_validation = now + VALIDATION_INTERVAL
+end
+
+function on_check_spot_existing()
+    local now = time_global()
+    if not validation_active then
+        if now < next_validation then return end
+        begin_marker_validation(now)
+    end
+
+    for _ = 1, VALIDATION_IDS_PER_FRAME do
+        local id = validation_queue[validation_index]
+        if not id then
+            validation_active = false
+            next_validation = time_global() + VALIDATION_INTERVAL
+            return
+        end
+        validation_index = validation_index + 1
+
+        local spot_types = init_markers[id]
+        if spot_types then
+            for spot_type, _ in pairs(spot_types) do
+                if level.map_has_object_spot(id, spot_type) == 0 then
+                    -- Removing the current key during pairs is supported by
+                    -- Lua and avoids a temporary table for every validated ID.
+                    remove_old_marker(id, spot_type)
+                end
+            end
+        end
+    end
+end
+
+function marker_background_update()
+    if not (db and db.actor) then return end
+    local now = time_global()
+    if not collect_active and type(level.map_get_object_spots) == "function" and now >= next_snapshot then
+        collect_cursor = 1
+        collect_active = true
+        next_collect_slice = now
+    end
+    if collect_active then collect_marker_chunk() end
+    on_check_spot_existing()
+end
+
+function clear_marker(id)
+    if init_markers[id] then
+        for spot_type, _ in pairs(init_markers[id]) do
+            remove_old_marker(id, spot_type)
+        end
+    end
+
+    init_markers[id] = nil
+end
+
+function remove_old_marker(id, spot_type)
+    local marker_key = id .. "_" .. spot_type
+
+    if markers_list[marker_key] then
+        markers_list[marker_key]:Show(false)
+        markers_list[marker_key] = nil
+    end
+
+    if prev_obj_positions and prev_obj_positions[marker_key] then
+        prev_obj_positions[marker_key] = nil
+    end
+
+    if init_markers[id] then
+        init_markers[id][spot_type] = nil
+
+        if next(init_markers[id]) == nil then
+            init_markers[id] = nil
+        end
+    end
+end
+
+function markers_toggle(key)
+    if key ~= compass_mcm.get_config("tc_keybinds/keybind") then return end
+
+    is_show_markers = not is_show_markers
+end
+
+function load_state(m_data)
+    m_data = type(m_data) == "table" and m_data or {}
+    init_markers = {}
+    collect_snapshot = nil
+    next_snapshot = 0
+    collect_active = false
+    validation_active = false
+    next_validation = time_global() + VALIDATION_INTERVAL
+    looted_corpses = type(m_data.looted_corpses) == "table" and m_data.looted_corpses or {}
+
+    local saved = type(m_data.init_markers) == "table" and m_data.init_markers or {}
+    for id, spots in pairs(saved) do
+        if type(spots) == "table" then
+            for spot_type in pairs(spots) do
+                map_location_added(nil, spot_type, id)
+            end
+        end
+    end
+end
+
+function save_state(m_data)
+    m_data.init_markers = init_markers
+    m_data.looted_corpses = looted_corpses
+end
+
+function npc_on_use(npc)
+    if not npc or npc:alive() then
+        return
+    end
+
+    local corpse_id = npc:id()
+    looted_corpses[corpse_id] = true
+    remove_corpse_markers(corpse_id)
+end
+
+function actor_on_first_update()
+    activate_markers()
+    begin_marker_collection()
+end
+
+function on_game_start()
+    RegisterScriptCallback("actor_on_update", marker_background_update)
+    RegisterScriptCallback("on_loading_screen_dismissed", begin_marker_collection)
+    RegisterScriptCallback("actor_map_location_added", map_location_added)
+    RegisterScriptCallback("npc_on_use", npc_on_use)
+
+    RegisterScriptCallback("actor_on_first_update", actor_on_first_update)
+    RegisterScriptCallback("actor_on_net_destroy", deactivate_markers)
+	RegisterScriptCallback("actor_on_before_death", deactivate_markers)
+
+    RegisterScriptCallback("on_key_press", markers_toggle)
+
+    RegisterScriptCallback("load_state", load_state)
+    RegisterScriptCallback("save_state", save_state)
+end

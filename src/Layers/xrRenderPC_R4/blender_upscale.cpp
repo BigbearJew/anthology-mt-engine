@@ -70,6 +70,7 @@ void CBlender_upscale::Compile(CBlender_Compile& C)
 		C.r_Pass("stub_notransform_t", "anthology_upscale_prepare_depth", FALSE, FALSE, FALSE);
 		C.r_dx10Texture("s_image", r2_RT_generic0);
 		C.r_dx10Texture("s_depth", r2_RT_depth);
+		C.r_dx10Texture("s_forward_delta", "$user$svp_reactive_main");
 		C.r_End();
 		return;
 	}

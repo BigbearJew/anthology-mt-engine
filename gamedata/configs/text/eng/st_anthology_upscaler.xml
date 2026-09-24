@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+  <string id="ui_mcm_menu_anthology_upscaler"><text>Anthology: DLSS / FSR / PiP</text></string>
+  <string id="ui_mcm_anthology_upscaler_about"><text>DX11 upscaling and anti-aliasing. DLSS requires RTX; FSR 3.1 supports compatible DX11 GPUs. This is not frame generation. MCM restarts the renderer after mode or quality changes. An unavailable backend falls back to native rendering.</text></string>
+  <string id="ui_mcm_anthology_upscaler_mode"><text>Mode</text></string>
+  <string id="ui_mcm_anthology_upscaler_quality"><text>Quality</text></string>
+  <string id="ui_mcm_anthology_upscaler_scale"><text>Custom render scale</text></string>
+  <string id="ui_mcm_anthology_upscaler_scale_desc"><text>Only used with Custom quality. DLSS selects the nearest supported preset.</text></string>
+  <string id="ui_mcm_anthology_upscaler_sharpness"><text>Upscaler sharpness</text></string>
+  <string id="ui_mcm_anthology_upscaler_pip_effects"><text>Refresh PiP effects (experimental)</text></string>
+  <string id="ui_mcm_anthology_upscaler_pip_effects_desc"><text>Refreshes water, rain and translucent contributions between full scope captures using the current main view. Small effects may lose detail. Disable if artifacts appear, or set the PiP capture interval to 1.</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_off"><text>Off</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_fsr3"><text>FSR 3.1</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_dlss"><text>DLSS</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_native"><text>Native resolution AA</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_quality"><text>Quality</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_balanced"><text>Balanced</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_performance"><text>Performance</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_ultra"><text>Ultra performance</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_custom"><text>Custom</text></string>
+</string_table>

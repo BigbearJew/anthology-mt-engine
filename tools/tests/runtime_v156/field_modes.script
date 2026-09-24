@@ -1,0 +1,71 @@
+-- Isolated fixed-camera benchmark. Never ship.
+local start,stage,rifle_id,aim,last_zoom,heartbeat,aim_heartbeat=nil,0,nil,nil,0,0,0
+local measured_dt, measured_ticks, wall_start = 0, 0, 0
+local compared = 0
+function first_update()
+    get_console():execute("g_god on"); db.actor:enable_night_vision(false);get_console():execute('r__nightvision 0')
+    get_console():execute("main_menu off");device():pause(false)
+    start=time_global()
+    printf('V156_MCM initial=%s native=%s',tostring(ui_mcm.get('anthology_upscaler/mode')),tostring(get_console():get_token('r4_upscaler')))
+end
+function update()
+    if not start then return end
+    if time_continual()-heartbeat>5000 then printf("V156_TICK stage=%s time=%s start=%s precache=%s",stage,time_global(),start,tostring(device().precache_frame));heartbeat=time_continual() end
+    if (device().precache_frame or 0)>0 then return end
+    if aim_stamina then aim_stamina.AS_disable=true end
+    db.actor.health=1;db.actor.power=1
+    local now=time_global();local elapsed=now-start;local c=get_console()
+    if stage==0 and elapsed>8000 then
+        c:execute('r__flora_style 6');c:execute('scope_lense_live_effects 1');c:execute('scope_lense_temporal_mode 2');c:execute('scope_lense_update_interval 4')
+        c:execute('scope_lense_sharpness 1');c:execute('wpn_aim_toggle on');c:execute('bind wpn_zoom_inc kADD')
+        rifle_id=alife():create('wpn_sr25_leupold',db.actor:position(),db.actor:level_vertex_id(),db.actor:game_vertex_id(),db.actor:id()).id
+        stage=1;start=now
+    elseif stage==1 and elapsed>5000 then
+        local rifle=assert(level.object_by_id(rifle_id))
+        db.actor:move_to_slot(rifle,3);db.actor:activate_slot(3)
+        weather.pause(true);weather.sun_time(12,0)
+        weather.set_value_string('sun','clear_morning')
+        weather.set_value_vector('sun_color',1.1,1.05,1.0,0)
+        weather.set_value_numric('rain_density',0.5)
+        c:execute('ssfx_gloss_method 1')
+
+        db.actor:set_actor_position(vector():set(-100,-5,-100),true,false)
+        stage=2;start=now
+    elseif stage==2 and elapsed>5000 then
+        level.enable_input();aim=bind_to_dik(key_bindings.kWPN_ZOOM)
+        if not axr_main.weapon_is_zoomed then level.press_action(aim) end
+        stage=3;start=now
+    elseif stage==3 and elapsed>14000 then
+        printf('V156_CAMERA actor=%s device=%s',tostring(db.actor:position()),tostring(device().cam_pos)); printf('PIP152_FIXED_BEGIN upscaler=%s',c:get_token('r4_upscaler'));c:execute('screenshot v154_begin');stage=4;start=now;wall_start=time_continual()
+    elseif stage==4 and elapsed>80000 then
+        c:execute('screenshot v154_effects');printf('V154_CLOCK simulation_ms=%s world_ms=%s wall_ms=%s ticks=%s',measured_dt*1000,elapsed,time_continual()-wall_start,measured_ticks);printf('PIP152_FIXED_END');weather.pause(false)
+        printf('V154_VALIDATION PASS');c:execute('quit');start=nil
+    end
+    if stage==4 and elapsed>25000 and compared==0 then
+        c:execute('screenshot v155_dlss'); c:execute('r4_upscaler fsr3'); c:execute('vid_restart'); compared=1
+        printf('V155_MODE fsr3')
+    elseif stage==4 and elapsed>50000 and compared==1 then
+        c:execute('screenshot v155_fsr'); c:execute('r4_upscaler off'); c:execute('vid_restart'); compared=2
+        printf('V155_MODE native')
+    end
+    if stage==4 then measured_dt=measured_dt+device().f_time_delta;measured_ticks=measured_ticks+1 end
+
+    if stage>=2 and stage<=4 then db.actor:set_actor_direction(0+(stage==4 and 0.06*math.sin(elapsed/3000) or 0),-0.02) end
+    if stage>=3 and stage<=4 then
+        level.hold_action(aim)
+        if stage==3 and now-last_zoom>300 then
+            local key=bind_to_dik(key_bindings.kWPN_ZOOM_INC)
+            level.press_action(key);level.release_action(key);last_zoom=now
+        end
+        if now-aim_heartbeat>3000 then
+            if not axr_main.weapon_is_zoomed then level.release_action(aim);level.press_action(aim) end
+            printf('PIP152_FIXED stage=%s pip=%s',stage,c:get_integer('scope_lense_ads_is_pip'))
+            aim_heartbeat=now
+        end
+    end
+end
+function on_game_start()
+    RegisterScriptCallback('on_loading_screen_key_prompt',function() device():pause(false) end)
+    RegisterScriptCallback('actor_on_first_update',first_update)
+    RegisterScriptCallback('actor_on_update',update)
+end

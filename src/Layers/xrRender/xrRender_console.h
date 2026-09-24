@@ -219,6 +219,7 @@ extern ECORE_API int ps_scope_lense_head_thermal_active;
 extern ECORE_API int ps_scope_lense_ads_is_pip;
 extern ECORE_API int ps_scope_lense_live_effects;
 extern ECORE_API int ps_scope_lense_temporal_mode;
+extern ECORE_API int g_scope_lense_pixel_quality;
 extern ECORE_API int ps_scope_lense_update_interval;
 extern ECORE_API float ps_scope_lense_brightness;
 extern ECORE_API float ps_scope_lense_contrast;

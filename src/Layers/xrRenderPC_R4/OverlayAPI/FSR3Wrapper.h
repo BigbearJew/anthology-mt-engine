@@ -21,6 +21,7 @@ public:
         ID3D11Resource* unresolvedColor = nullptr;
         ID3D11Resource* motionVectors = nullptr;
         ID3D11Resource* depth = nullptr;
+        ID3D11Resource* reactive = nullptr;
         ID3D11Resource* output = nullptr;
         u32 renderWidth = 0;
         u32 renderHeight = 0;

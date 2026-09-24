@@ -290,6 +290,38 @@ void CDSGraphManager::r_dsgraph_render_ScopeSorted()  //  Redotix99: for 3D Shad
 {
 	// Change projection
 	CHudInitializer initializer(true);
+	// Bound the lens image by its actual displayed pixel footprint. Round upward
+	// and keep a margin for lens distortion, aim sway and subpixel antialiasing.
+	if (ps_scope_lense_temporal_mode == 2 && !Device.m_SecondViewport.IsSVPFrame())
+	{
+		float height = 0.f;
+		for (auto& item : RGraph.mapScopeHUDSorted)
+		{
+			Fmatrix transform;
+			transform.mul(Device.mFullTransform, *item.pMatrix);
+			float extent = 0.f;
+			for (u32 corner = 0; corner < 8; ++corner)
+			{
+				const Fbox& box = item.pVisual->vis.box;
+				Fvector point, projected;
+				point.set((corner & 1) ? box.max.x : box.min.x,
+					(corner & 2) ? box.max.y : box.min.y, (corner & 4) ? box.max.z : box.min.z);
+				transform.transform(projected, point);
+				extent = _max(extent, _max(_abs(projected.x), _abs(projected.y)));
+			}
+			height = _max(height, extent);
+		}
+		if (height > .01f)
+		{
+			const int target = clampr(int(ceilf(height * 1.2f * 10.f)) * 10, 70, 100);
+			// Grow immediately; shrinking waits for a stable aim to avoid RT churn.
+			static int pending = 100;
+			static u32 since = 0;
+			if (pending != target) { pending = target; since = Device.dwTimeGlobal; }
+			if (target > g_scope_lense_pixel_quality || Device.dwTimeGlobal - since > 1500)
+				g_scope_lense_pixel_quality = target;
+		}
+	}
 
 	// Rendering
 	RImplementation.rmNear();

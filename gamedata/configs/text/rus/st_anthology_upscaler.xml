@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+  <string id="ui_mcm_menu_anthology_upscaler"><text>Anthology: DLSS / FSR / PiP</text></string>
+  <string id="ui_mcm_anthology_upscaler_about"><text>DX11: масштабирование и сглаживание. DLSS — для RTX, FSR 3.1 — для совместимых DX11 видеокарт. Это не генерация кадров. После смены режима или качества MCM перезапускает рендер. При недоступном режиме движок возвращается к обычному рендеру.</text></string>
+  <string id="ui_mcm_anthology_upscaler_mode"><text>Режим</text></string>
+  <string id="ui_mcm_anthology_upscaler_quality"><text>Качество</text></string>
+  <string id="ui_mcm_anthology_upscaler_scale"><text>Масштаб для режима «Свой»</text></string>
+  <string id="ui_mcm_anthology_upscaler_scale_desc"><text>Применяется только в режиме качества «Свой». DLSS выбирает ближайший поддерживаемый пресет.</text></string>
+  <string id="ui_mcm_anthology_upscaler_sharpness"><text>Резкость апскейлера</text></string>
+  <string id="ui_mcm_anthology_upscaler_pip_effects"><text>Обновление эффектов PiP (эксперимент)</text></string>
+  <string id="ui_mcm_anthology_upscaler_pip_effects_desc"><text>Обновляет вклад воды, дождя и прозрачных эффектов между полными кадрами прицела. Использует текущий основной вид: мелкие эффекты могут терять детализацию. При артефактах отключите или выберите интервал обновления PiP 1.</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_off"><text>Выключено</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_fsr3"><text>FSR 3.1</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_dlss"><text>DLSS</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_native"><text>Сглаживание в родном разрешении</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_quality"><text>Качество</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_balanced"><text>Баланс</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_performance"><text>Производительность</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_ultra"><text>Максимальная производительность</text></string>
+  <string id="ui_mcm_lst_anthology_upscaler_custom"><text>Свой</text></string>
+</string_table>

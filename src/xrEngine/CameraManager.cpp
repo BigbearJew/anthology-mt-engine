@@ -16,6 +16,24 @@
 #include "gamefont.h"
 #include "render.h"
 
+extern int ps_scope_lense_temporal_mode;
+extern int g_scope_lense_pixel_quality;
+namespace {
+CCameraManager* livePipCamera = nullptr;
+u32 livePipCameraFrame = u32(-1);
+float livePipNear = VIEWPORT_NEAR;
+}
+
+bool CCameraManager::RestoreLivePiPMainView()
+{
+    if (!livePipCamera || livePipCameraFrame + 1 != Device.dwFrame) return false;
+    CCameraManager* camera = livePipCamera;
+    livePipCamera = nullptr;
+    camera->ApplyDevice(livePipNear);
+    g_pGamePersistent->m_pGShaderConstants->hud_params.w = 0.f;
+    return true;
+}
+
 float psCamInert = 0.f;
 float psCamSlideInert = 0.25f;
 
@@ -175,6 +193,7 @@ CCameraManager::CCameraManager(bool bApplyOnUpdate)
 
 CCameraManager::~CCameraManager()
 {
+    if (livePipCamera == this) livePipCamera = nullptr;
 	for (EffectorCamIt it = m_EffectorsCam.begin(); it != m_EffectorsCam.end(); it++)
 		xr_delete(*it);
 	for (EffectorPPIt it = m_EffectorsPP.begin(); it != m_EffectorsPP.end(); it++)
@@ -480,6 +499,13 @@ void CCameraManager::ApplyDevice(float _viewport_near)
 	{
 		// For the second viewport, set FOV from HUD shader constants
 		Device.fFOV = g_pGamePersistent->m_pGShaderConstants->hud_params.y;
+        if (ps_scope_lense_temporal_mode == 2)
+        {
+            livePipCamera = this; livePipCameraFrame = Device.dwFrame; livePipNear = _viewport_near;
+            // Crop invisible outer rays while preserving pixels per degree.
+            const float crop = clampr(g_scope_lense_pixel_quality, 70, 100) * .01f;
+            Device.fFOV = rad2deg(2.f * atanf(tanf(deg2rad(Device.fFOV) * .5f) * crop));
+        }
 
 		// Mark the second viewport camera as ready
 		Device.m_SecondViewport.isCamReady = true;

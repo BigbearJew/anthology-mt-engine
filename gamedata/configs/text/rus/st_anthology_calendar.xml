@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<string_table>
+  <string id="ui_mcm_anthology_runtime_seasons_calendar">
+    <text>Сезон по игровому месяцу</text>
+  </string>
+  <string id="ui_mcm_anthology_runtime_seasons_calendar_desc">
+    <text>Автоматическая смена по дате сохранения. Отключите для постоянного ручного выбора. Месяцы настраиваются в anthology_seasons.ltx.</text>
+  </string>
+</string_table>

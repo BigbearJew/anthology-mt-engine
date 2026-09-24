@@ -1,0 +1,192 @@
+-- Calendar and optional weather pools. No engine objects are stored in saves.
+local ROOT = "anthology_runtime_seasons"
+local COMMAND = "r__flora_style"
+local months = {4, 4, 5, 6, 1, 1, 1, 1, 2, 3, 5, 4}
+local pools = {}
+local pool_version = 0
+local categories = {clear=true, partly=true, cloudy=true, rain=true, storm=true, foggy=true}
+local next_update = 0
+local last_month
+local initialized = false
+local wrapped = false
+local pending_weather = false
+
+local function log(message)
+    if printf then printf("[anthology_seasons] %s", message) end
+end
+
+local function normalize_style(value)
+    return math.max(1, math.min(6, math.floor(tonumber(value) or 1)))
+end
+
+function get_style()
+    local console = get_console and get_console()
+    return console and normalize_style(console:get_integer(COMMAND)) or 1
+end
+
+function set_style(value)
+    local console = get_console and get_console()
+    if not console then return false end
+    local style = normalize_style(value)
+    if get_style() ~= style then
+        console:execute(COMMAND .. " " .. tostring(style))
+        pending_weather = true
+    end
+    return true
+end
+
+function style_for_month(month)
+    return months[tonumber(month)]
+end
+
+-- Addons can also register loaded engine weather cycles through this function.
+-- Empty or unavailable pools leave the modpack's weather selection intact.
+function register_weather(style, category, cycle)
+    style = tonumber(style)
+    if not style or style ~= math.floor(style) or style < 1 or style > 6
+        or not categories[category] or type(cycle) ~= "string" or cycle == "" then
+        return false
+    end
+    if not (level and level.weather_exists and level.weather_exists(cycle)) then
+        log("weather unavailable, keeping pack fallback: " .. cycle)
+        return false
+    end
+    pools[style] = pools[style] or {}
+    pools[style][category] = pools[style][category] or {}
+    pools[style][category][cycle] = true
+    pool_version = pool_version + 1
+    pending_weather = true
+    return true
+end
+
+local function read_config()
+    if initialized then return end
+    initialized = true
+    local ini = ini_file("anthology_seasons.ltx")
+    if not ini then return end
+    for month = 1, 12 do
+        local key = tostring(month)
+        if ini:line_exist("calendar", key) then
+            local value = tonumber(ini:r_string("calendar", key))
+            if value and value == math.floor(value) and value >= 1 and value <= 6 then
+                months[month] = value
+            else
+                log("invalid calendar month " .. key .. "; using default")
+            end
+        end
+    end
+    ini:section_for_each(function(section)
+        if section:sub(1, 8) ~= "weather_" then return end
+        if not ini:line_exist(section, "style") or not ini:line_exist(section, "category")
+            or not ini:line_exist(section, "cycle") then
+            log("incomplete weather registration: " .. section)
+            return
+        end
+        register_weather(ini:r_string(section, "style"), ini:r_string(section, "category"),
+            ini:r_string(section, "cycle"))
+    end)
+end
+
+local function copy(source)
+    local result = {}
+    for key, value in pairs(source or {}) do result[key] = value end
+    return result
+end
+
+local function apply_pools(manager)
+    if type(manager.presets) ~= "table" then return end
+    local state = manager.anthology_season_pools
+    if not state then
+        state = {base={}, owned={}, sources={}}
+        manager.anthology_season_pools = state
+    end
+    local seasonal = pools[get_style()] or {}
+    for category in pairs(categories) do
+        -- Preserve replacements made by other weather addons between calls.
+        if manager.presets[category] ~= state.owned[category] then
+            state.base[category] = manager.presets[category]
+        end
+        local selected = seasonal[category] or state.base[category]
+        if selected then
+            if state.selected_style ~= get_style() or not state.owned[category]
+                or state.sources[category] ~= selected or state.version ~= pool_version then
+                state.owned[category] = copy(selected)
+            end
+            manager.presets[category] = state.owned[category]
+        end
+    end
+    state.selected_style = get_style()
+    state.version = pool_version
+    state.sources = copy(seasonal)
+    for category in pairs(categories) do
+        state.sources[category] = seasonal[category] or state.base[category]
+    end
+end
+
+local function install_weather_hook()
+    if wrapped or not level_weathers or not level_weathers.WeatherManager then return end
+    local class = level_weathers.WeatherManager
+    local original = class.select_weather
+    if type(original) ~= "function" then return end
+    class.select_weather = function(self, ...)
+        apply_pools(self)
+        return original(self, ...)
+    end
+    wrapped = true
+end
+
+local function calendar_enabled()
+    local value = ui_mcm and ui_mcm.get and ui_mcm.get(ROOT .. "/calendar")
+    if value == nil then return true end
+    return value == true or value == 1
+end
+
+function refresh(force)
+    if not (db and db.actor and game and game.get_game_time) then return end
+    read_config()
+    install_weather_hook()
+    local date = game.get_game_time()
+    if not date then return end
+    local year, month = date:get(0, 0, 0, 0, 0, 0, 0)
+    local stamp = tostring(year) .. ":" .. tostring(month)
+    if calendar_enabled() and (force or stamp ~= last_month) then
+        local style = style_for_month(month)
+        if style then set_style(style) end
+    end
+    last_month = stamp
+    -- Let the manager handle its own transitions, underground weather, blowouts
+    -- and paused editor state. Its normal selection also sees these pools.
+    if pending_weather and wrapped then
+        local manager = level_weathers.get_weather_manager()
+        if manager and manager.last_hour and manager.weatherType then
+            pending_weather = false
+            manager:select_weather(false)
+        end
+    end
+end
+
+function on_update()
+    local now = time_global()
+    if now < next_update and next_update - now <= 1000 then return end
+    next_update = now + 1000
+    refresh(false)
+end
+
+function on_first_update()
+    next_update = 0
+    last_month = nil
+    pending_weather = true
+    refresh(true)
+end
+
+function on_option_change()
+    pending_weather = true
+    refresh(true)
+end
+
+function on_game_start()
+    install_weather_hook()
+    RegisterScriptCallback("actor_on_first_update", on_first_update)
+    RegisterScriptCallback("actor_on_update", on_update)
+    RegisterScriptCallback("on_option_change", on_option_change)
+end

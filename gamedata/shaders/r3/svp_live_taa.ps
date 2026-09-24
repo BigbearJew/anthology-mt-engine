@@ -1,0 +1,42 @@
+// Each history entry is a freshly rendered lens frame, never a repeated main view.
+#include "common.h"
+Texture2D<float4> s_svp_scene;
+Texture2D<float4> s_svp_history;
+Texture2D<float4> s_svp_motion;
+Texture2D<float4> s_svp_reactive;
+float4 svp_taa_control;
+float4x4 svp_taa_previous_view;
+
+float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    uint width, height;
+    s_svp_scene.GetDimensions(width, height);
+    float2 pixel = rcp(float2(width, height));
+    float2 current_uv = uv + ssfx_jitter.xy * float2(0.5, -0.5);
+    float3 current = s_svp_scene.SampleLevel(smp_rtlinear, current_uv, 0).rgb;
+    float4 motion = s_svp_motion.SampleLevel(smp_nofilter, current_uv, 0);
+    gbuffer_data data = gbuffer_load_data(current_uv, current_uv * float2(width, height));
+    float2 previous_uv = uv - motion.xy;
+    float4 history = s_svp_history.SampleLevel(smp_rtlinear, previous_uv, 0);
+    float expected_depth = mul(svp_taa_previous_view, float4(data.P, 1)).z;
+    float tolerance = max(0.025, abs(expected_depth) * 0.005);
+    float valid = svp_taa_control.x * (data.P.z > 0.01) * (motion.w < 0.25)
+        * all(previous_uv > pixel * 0.5) * all(previous_uv < 1.0 - pixel * 0.5)
+        * (abs(history.a - expected_depth) < tolerance);
+    float3 low = current, high = current, mean = 0, second_moment = 0;
+    [unroll] for (int y=-1; y<=1; ++y)
+    [unroll] for (int x=-1; x<=1; ++x)
+    {
+        float3 color = s_svp_scene.SampleLevel(smp_rtlinear, current_uv + float2(x,y)*pixel, 0).rgb;
+        low = min(low, color); high = max(high, color);
+        mean += color; second_moment += color*color;
+    }
+    mean /= 9.0;
+    float3 deviation = sqrt(max(second_moment / 9.0 - mean*mean, 0));
+    history.rgb = clamp(history.rgb, max(low, mean-deviation*1.25), min(high, mean+deviation*1.25));
+    float3 delta = abs(s_svp_reactive.SampleLevel(smp_nofilter, current_uv, 0).rgb);
+    float reactive = saturate(max(delta.r,max(delta.g,delta.b))*8.0) * svp_taa_control.y;
+    float speed = length(motion.xy / pixel);
+    float weight = valid * lerp(0.82, 0.25, saturate(speed/8.0)) * (1.0-reactive);
+    return float4(lerp(current, history.rgb, weight), min(max(data.P.z,0),65504.0));
+}

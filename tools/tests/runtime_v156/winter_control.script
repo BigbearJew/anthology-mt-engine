@@ -1,0 +1,37 @@
+-- Rendering isolation: same scene before/after season and postprocess changes.
+local stage,start=0,nil
+function first_update()
+    local c=get_console();c:execute('g_god on');c:execute('main_menu off');c:execute('r__nightvision 0')
+    device():pause(false);level.enable_input();db.actor.health=1
+    start=time_global()
+end
+function update()
+    if not start or (device().precache_frame or 0)>0 then return end
+    db.actor.health=1;db.actor.power=1
+    if time_global()-start<10000 then return end
+    local c=get_console()
+    printf('V156_WINTER_CONTROL stage=%s style=%s nvg=%s',stage,anthology_runtime_seasons.get_style(),c:get_integer('r__nightvision'))
+    if stage==0 then
+        c:execute('r__flora_style 6');db.actor:activate_slot(0)
+        weather.pause(true);weather.sun_time(12,0);weather.set_value_string('sun','clear_morning')
+        weather.set_value_vector('sun_color',1.1,1.05,1.0,0)
+        level.set_cam_custom_position_direction(vector():set(-240,-33.3,-380),vector():set(1.2,-.8,0),1,false,false)
+    elseif stage==1 then c:execute('screenshot winter_control_summer')
+    elseif stage==2 then c:execute('r__flora_style 4')
+    elseif stage==3 then c:execute('screenshot winter_control_winter')
+    elseif stage==4 then
+        -- Only this diagnostic run: isolate any stored/addon PPE.
+        for id=0,20000 do level.remove_pp_effector(id) end
+        if z_beefs_nvgs and z_beefs_nvgs.reset_nvg_render_state then z_beefs_nvgs.reset_nvg_render_state(true) end
+        c:execute('r__nightvision 0');c:execute('shader_param_8 (0,0,0,0)')
+    elseif stage==5 then c:execute('screenshot winter_control_no_ppe')
+    elseif stage==6 then printf('V154_VALIDATION PASS');c:execute('quit');start=nil;return end
+    stage=stage+1;start=time_global()
+end
+function on_game_start()
+    local original=ui_mcm.get
+    ui_mcm.get=function(id,...)if id=='anthology_runtime_seasons/calendar' then return false end return original(id,...)end
+    RegisterScriptCallback('actor_on_first_update',first_update)
+    RegisterScriptCallback('actor_on_update',update)
+    RegisterScriptCallback('on_loading_screen_key_prompt',function()device():pause(false)end)
+end

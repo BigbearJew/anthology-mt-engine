@@ -1328,7 +1328,9 @@ static class scope_lense_quality_setup : public R_constant_setup
 {
 	virtual void setup(R_constant* C)
 	{
-		const float quality = clampr(ps_scope_lense_quality_percent, 25, 100) * 0.01f;
+		const float quality = clampr(ps_scope_lense_temporal_mode == 2
+			? ps_scope_lense_quality_percent * g_scope_lense_pixel_quality / 100
+			: ps_scope_lense_quality_percent, 25, 100) * 0.01f;
 		const float virtual_width = std::max(1.0f, std::floor(float(Device.dwWidth) * quality));
 		const float virtual_height = std::max(1.0f, std::floor(float(Device.dwHeight) * quality));
 		RCache.set_c(C, quality, virtual_width, virtual_height, 0.0f);
@@ -1388,6 +1390,19 @@ static Fvector2 main_view_jitter_ndc()
 
 #if defined(USE_DX11)
 	const bool svp_frame = Device.m_SecondViewport.IsSVPFrame();
+	if (svp_frame && ps_scope_lense_temporal_mode == 2 && RImplementation.o.ssfx_motionvectors &&
+		!RImplementation.o.dx10_msaa && !RImplementation.o.dx11_hdr10 &&
+		!Device.m_SecondViewport.IsSVPThermal() && ps_r2_heatvision == 0 && ps_r2_nightvision == 0 &&
+		!(ps_scope_lense_allow_nvg && ps_scope_lense_head_nvg_active))
+	{
+		static const Fvector2 offsets[4] = {{-.25f, -.25f}, {.25f, -.25f}, {-.25f, .25f}, {.25f, .25f}};
+		static u32 last = u32(-1), sequence = 0;
+		if (last != Device.dwFrame) { last = Device.dwFrame; ++sequence; }
+		Fvector2 result;
+		result.set(2.f * offsets[sequence % 4].x / _max(1.f, g_main_taa_render_size.x),
+			-2.f * offsets[sequence % 4].y / _max(1.f, g_main_taa_render_size.y));
+		return result;
+	}
 	if (g_main_temporal_upscaler_active && !svp_frame)
 	{
 		const float renderWidth = _max(1.f, g_main_taa_render_size.x);
@@ -1448,6 +1463,25 @@ static class ssfx_jitter : public R_constant_setup
 		RCache.set_c(C, jitter.x, jitter.y, ps_ssfx_taa.x, ps_ssfx_taa.w);
 	}
 }    ssfx_jitter;
+
+static class anthology_shadow_history_jitter : public R_constant_setup
+{
+	virtual void setup(R_constant* C)
+	{
+		static u32 previousFrame = u32(-1);
+		static Fvector2 previous = {}, delta = {};
+		if (Device.m_SecondViewport.IsSVPFrame()) { RCache.set_c(C, 0.f, 0.f, 0.f, 0.f); return; }
+		if (previousFrame != Device.dwFrame)
+		{
+			const Fvector2 current = main_view_jitter_ndc();
+			const bool adjacent = Device.dwFrame - previousFrame <= 2 && !Device.dwPrecacheFrame;
+			delta.set(adjacent ? (previous.x-current.x)*.5f : 0.f,
+				adjacent ? (previous.y-current.y)*-.5f : 0.f);
+			previous = current; previousFrame = Device.dwFrame;
+		}
+		RCache.set_c(C, delta.x, delta.y, 0.f, 0.f);
+	}
+} anthology_shadow_history_jitter;
 
 static class ssfx_fTimeDelta : public R_constant_setup
 {
@@ -1734,6 +1768,7 @@ void CBlender_Compile::SetMapping()
 	r_Constant("ssfx_timedelta", &ssfx_fTimeDelta);
 	r_Constant("ssfx_motionblur", &ssfx_motionblur);
 	r_Constant("ssfx_jitter", &ssfx_jitter);
+	r_Constant("anthology_shadow_history_jitter", &anthology_shadow_history_jitter);
 	r_Constant("ssfx_pom", &ssfx_pom);
 
 	r_Constant("ssfx_terrain_pom", &ssfx_terrain_pom);

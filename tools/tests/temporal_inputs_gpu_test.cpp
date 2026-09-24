@@ -8,7 +8,7 @@ static void captureFilter(Gpu& gpu, const fs::path& root, Includes& includes)
     std::ofstream(file) << "Texture2D s_second_vp,s_prev_frame; SamplerState smp_base;\n"
         "float4 screen_res,probe_uv; float4x4 scope_lense_reproject;\n"
         "#include \"anthology_pip_temporal.h\"\n"
-        "float4 main(float4 p:SV_Position,float2 uv:TEXCOORD0):SV_Target { return float4(pip_capture_detail(probe_uv.xy,false),1); }\n";
+        "float4 main(float4 p:SV_Position,float2 uv:TEXCOORD0):SV_Target { return float4(probe_uv.z > 0.5 ? pip_capture_detail(probe_uv.xy,false) : pip_capture_color(probe_uv.xy),1); }\n";
     Shader shader(gpu.device.Get(),file,includes);
     constexpr int size=32;
     std::vector<Pixel> pixels(size*size);
@@ -20,8 +20,7 @@ static void captureFilter(Gpu& gpu, const fs::path& root, Includes& includes)
     shader.constant("scope_lense_quality",Pixel{1,size,size,0});
     double errors[2]{};
     for(int mode=0;mode<2;++mode) for(int x=4;x<28;++x) for(float offset:{.25f,.5f,.75f}) {
-        shader.constant("scope_lense_motion",Pixel{float(mode),.02f,.005f,4});
-        shader.constant("probe_uv",Pixel{(x+.5f+offset)/size,.5f,0,0});
+        shader.constant("probe_uv",Pixel{(x+.5f+offset)/size,.5f,float(mode),0});
         shader.texture(gpu.context.Get(),"s_second_vp",source);
         gpu.draw(shader,output);
         const auto p=gpu.read(output)[0];

@@ -22,7 +22,7 @@ public:
 	void MarkGpuDispatch();
 	void EndGpuProfile();
 	bool Dispatch(ID3D11Resource* color, ID3D11Resource* motion, ID3D11Resource* depth,
-		ID3D11Resource* output, bool resetHistory);
+		ID3D11Resource* output, ID3D11Resource* reactive, bool resetHistory);
     void Shutdown();
 
     bool IsEnabled() const { return m_mode != AnthologyUpscalerOff; }

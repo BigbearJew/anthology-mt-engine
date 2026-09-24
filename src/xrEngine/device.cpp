@@ -1230,7 +1230,19 @@ void CRenderDevice::FrameMove()
 	// Decide before consuming the simulation timer: the next main update must
 	// include the capture's elapsed wall time. dwFrame still advances for caches.
 	const bool capture_frame = m_SecondViewport.IsSVPFrame();
-	if (capture_frame && !legacy_pip_tick && ps_scope_lense_temporal_mode != 0 &&
+	// Live PiP updates the world on the capture, then presents that SAME pose.
+    // Sparse modes retain their older capture-only tick rule.
+    if (!capture_frame && !legacy_pip_tick && ps_scope_lense_temporal_mode == 2 &&
+        m_SecondViewport.IsSVPActive() && m_SecondViewport.IsSVPTextureReady() &&
+        m_SecondViewport.GetSVPCaptureFrame() + 1 == dwFrame && !dwPrecacheFrame && !Paused() &&
+        !psDeviceFlags.test(rsConstantFPS) && b_is_Active && g_bLoaded && g_loading_events.empty() &&
+        g_pGameLevel && g_pGameLevel->bReady && g_pGamePersistent &&
+        g_pGamePersistent->m_pGShaderConstants && CCameraManager::RestoreLivePiPMainView())
+    {
+        svp_render_only_frame = true;
+        return;
+    }
+    if (capture_frame && !legacy_pip_tick && ps_scope_lense_temporal_mode == 1 &&
 		!dwPrecacheFrame && !Paused() && !psDeviceFlags.test(rsConstantFPS) && b_is_Active &&
 		g_bLoaded && mMainHudCamSaved && g_loading_events.empty() &&
 		g_pGameLevel && g_pGameLevel->bReady && g_pGamePersistent &&
@@ -1561,7 +1573,8 @@ void CRenderDevice::CSecondVPParams::MarkSVPTextureReady()
 	// Publish transforms only together with the successfully copied lens image.
 	capturedView = Device.mView;
 	capturedProjection = Device.mProject;
-	capturedFov = Device.fFOV;
+	capturedFov = ps_scope_lense_temporal_mode == 2 && g_pGamePersistent && g_pGamePersistent->m_pGShaderConstants
+        ? g_pGamePersistent->m_pGShaderConstants->hud_params.y : Device.fFOV;
 	capturedNvg = ps_scope_lense_head_nvg_active;
 	capturedQuality = ps_scope_lense_quality_percent;
 	capturedTime = Device.dwTimeGlobal;
@@ -1591,5 +1604,6 @@ bool CRenderDevice::CSecondVPParams::IsSVPFrame() //--#SM+#-- +SecondVP+
 		 capturedQuality != ps_scope_lense_quality_percent);
 	return temporalSchedule.Select(Device.dwFrame, Device.dwTimeGlobal,
 		isActive && !Device.dwPrecacheFrame && !IsMainMenuActive(), isTextureReady,
-		ps_scope_lense_update_interval, cameraChanged, ps_scope_lense_temporal_mode == 0 ? frameDelay : 0);
+		ps_scope_lense_temporal_mode == 2 ? 1 : ps_scope_lense_update_interval,
+		cameraChanged, ps_scope_lense_temporal_mode == 0 ? frameDelay : 0);
 }
