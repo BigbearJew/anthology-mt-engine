@@ -32,3 +32,13 @@ Validation helpers:
 
 No Lost in Place port, world streaming, texture compression, SSS shadow, or hand
 motion-vector changes are included here.
+
+QA additionally exposed a pre-existing truncated winter BC3 DDS in
+`textures_anthology_runtime_seasons.xdb1`: winter_objects/mtl/mtl_rja_02.dds.
+The failure reproduces with the installed v164 EXE. Its 2048x2048/12-mip header
+requires 5592560 bytes, but both independent archive extraction and the engine
+return 5592547. The final 1x1 block has only 3 of 16 bytes.
+`tools/repair_truncated_winter_dds.py` keeps the 11 complete levels byte-for-byte,
+corrects the mip count and removes those 3 incomplete bytes. D3DX11 rejects the
+original (0x80004005) and accepts the repaired DDS (0). The release supplies a
+loose texture override; it does not rewrite the archive or relax decoder checks.
