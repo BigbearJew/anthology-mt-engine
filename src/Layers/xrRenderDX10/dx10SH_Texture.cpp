@@ -459,6 +459,10 @@ void CTexture::desc_enshure()
 
 u64 CTexture::TrimUnused(u32 now, bool pressure)
 {
+	// Keep already-loaded maps for the lifetime of their UI resources. Panning
+	// and reopening the PDA must not synchronously reload evicted DDS images.
+	if (texture_residency::PdaMap(m_loadName.size() ? m_loadName.c_str() : cName.c_str()))
+		return 0;
 	if (!is_loaded() || loadKind.load(std::memory_order_acquire) != LoadKindDds ||
 		m_externalView.load(std::memory_order_relaxed) || flags.bUser || flags.bLoadedAsStaging ||
 		!pSurface || !seqDATA.empty() || pAVI || pTheora || !ResidentBytes())
@@ -565,6 +569,11 @@ void CTexture::FinishLoad()
 	m_residentBytes.store(flags.MemoryUsage, std::memory_order_relaxed);
 	DEV->TextureAllocated(flags.MemoryUsage);
 	loadState.store(LoadStateLoaded, std::memory_order_release);
+	static const bool pdaDiagnostics = strstr(Core.Params, "-ui_stream_diagnostics") != nullptr;
+	const char* name = m_loadName.size() ? m_loadName.c_str() : cName.c_str();
+	if (pdaDiagnostics && texture_residency::PdaMap(name))
+		Msg("* [pda-map] loaded frame=%u kib=%llu name=%s", Device.dwFrame,
+			static_cast<unsigned long long>(flags.MemoryUsage / 1024), name);
 }
 
 void CTexture::FailLoad()

@@ -2080,7 +2080,7 @@ HRESULT CRender::shader_compile(
 		string_path file;
 		// v164 changes shared motion-mask and SSS includes. Cached bytecode only
 		// validates corruption, so use a fresh namespace for the new contracts.
-		xr_strcpy(file, "shaders_cache\\r4\\anthology_v164_hud\\");
+		xr_strcpy(file, "shaders_cache\\r4\\anthology_v165_pda\\");
 		xr_strcat(file, name);
 		xr_strcat(file, ".");
 		xr_strcat(file, extension);

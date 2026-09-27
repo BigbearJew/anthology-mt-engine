@@ -1,9 +1,9 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding="windows-1251"?>
 <string_table>
   <string id="ui_mcm_anthology_runtime_seasons_calendar">
-    <text>РЎРµР·РѕРЅ РїРѕ РёРіСЂРѕРІРѕРјСѓ РјРµСЃСЏС†Сѓ</text>
+    <text>Сезон по игровому месяцу</text>
   </string>
   <string id="ui_mcm_anthology_runtime_seasons_calendar_desc">
-    <text>РђРІС‚РѕРјР°С‚РёС‡РµСЃРєР°СЏ СЃРјРµРЅР° РїРѕ РґР°С‚Рµ СЃРѕС…СЂР°РЅРµРЅРёСЏ. РћС‚РєР»СЋС‡РёС‚Рµ РґР»СЏ РїРѕСЃС‚РѕСЏРЅРЅРѕРіРѕ СЂСѓС‡РЅРѕРіРѕ РІС‹Р±РѕСЂР°. РњРµСЃСЏС†С‹ РЅР°СЃС‚СЂР°РёРІР°СЋС‚СЃСЏ РІ anthology_seasons.ltx.</text>
+    <text>Автоматическая смена по дате сохранения. Отключите для постоянного ручного выбора. Месяцы настраиваются в anthology_seasons.ltx.</text>
   </string>
 </string_table>

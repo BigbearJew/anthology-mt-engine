@@ -1,18 +1,18 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding="windows-1251"?>
 <string_table>
   <string id="ui_mcm_anthology_upscaler_pip_mode">
-    <text>Р РµР¶РёРј PiP</text>
+    <text>Режим PiP</text>
   </string>
   <string id="ui_mcm_anthology_upscaler_pip_mode_desc">
-    <text>Р–РёРІРѕР№ PiP РѕР±РЅРѕРІР»СЏРµС‚ СЃС†РµРЅСѓ РєР°Р¶РґС‹Р№ РєР°РґСЂ, РёСЃРїРѕР»СЊР·СѓРµС‚ РѕС‚РґРµР»СЊРЅРѕРµ TAA Рё РѕР±СЂРµР·Р°РµС‚ РЅРµРІРёРґРёРјСѓСЋ РѕР±Р»Р°СЃС‚СЊ РІРѕРєСЂСѓРі Р»РёРЅР·С‹ СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј РїР»РѕС‚РЅРѕСЃС‚Рё РїРёРєСЃРµР»РµР№. РРЅС‚РµСЂРІР°Р» РїРѕРІС‚РѕСЂР° РѕС‚РЅРѕСЃРёС‚СЃСЏ С‚РѕР»СЊРєРѕ Рє РґРІСѓРј РїСЂРµР¶РЅРёРј СЂРµР¶РёРјР°Рј.</text>
+    <text>Живой PiP обновляет сцену каждый кадр, использует отдельное TAA и обрезает невидимую область вокруг линзы с сохранением плотности пикселей. Интервал повтора относится только к двум прежним режимам.</text>
   </string>
   <string id="ui_mcm_anthology_upscaler_pip_live">
-    <text>РљР°Р¶РґС‹Р№ РєР°РґСЂ + TAA (СЌРєСЃРїРµСЂРёРјРµРЅС‚Р°Р»СЊРЅС‹Р№)</text>
+    <text>Каждый кадр + TAA (экспериментальный)</text>
   </string>
   <string id="ui_mcm_anthology_upscaler_pip_sparse">
-    <text>РџРѕРІС‚РѕСЂ СЃ СЂРµРїСЂРѕРµРєС†РёРµР№</text>
+    <text>Повтор с репроекцией</text>
   </string>
   <string id="ui_mcm_anthology_upscaler_pip_legacy">
-    <text>РЎС‚Р°СЂС‹Р№ РїРѕРІС‚РѕСЂ</text>
+    <text>Старый повтор</text>
   </string>
 </string_table>

@@ -23,10 +23,17 @@ inline void CanonicalizeFileName(char* name)
     }
 }
 
+inline bool PdaMap(const char* name)
+{
+    return name && (std::strncmp(name, "map\\", 4) == 0 ||
+        std::strcmp(name, "ui\\ui_global_map") == 0 || std::strcmp(name, "ui\\ui_nomap2") == 0);
+}
+
 inline bool DemandOnly(const char* name)
 {
-    return name && (std::strncmp(name, "sky\\", 4) == 0 ||
-        std::strncmp(name, "map\\", 4) == 0 || std::strncmp(name, "ui\\", 3) == 0);
+    // PDA maps join the existing loading-screen queue, including the global atlas.
+    return name && !PdaMap(name) && (std::strncmp(name, "sky\\", 4) == 0 ||
+        std::strncmp(name, "ui\\", 3) == 0);
 }
 
 inline bool Pressure(bool previous, Bytes local, Bytes budget, Bytes allocated,

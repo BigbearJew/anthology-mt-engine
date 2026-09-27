@@ -1,6 +1,7 @@
 #include "../../src/Layers/xrRender/TextureResidencyPolicy.h"
 #include <cstdio>
 #include <cstdlib>
+#include <initializer_list>
 
 namespace
 {
@@ -36,7 +37,7 @@ int main()
     check(!Expired(100000, 0, 99999, true, true, true), "visible sky survives pressure");
     check(!Expired(100000, 0, 99999, true, false, true), "visible main/PiP world survives pressure");
     check(!Expired(100000, 99999, 0, false, true, true), "new demand load has grace");
-    check(Expired(15000, 0, 0, false, true, false), "unused sky/maps expire without pressure");
+    check(Expired(15000, 0, 0, false, true, false), "unused sky expires without pressure");
     check(!Expired(14999, 0, 0, false, true, false), "idle timeout boundary");
     check(!Expired(100000, 0, 0, false, false, false), "world retained without pressure");
     check(Expired(20000, 0, 0, false, false, true), "never drawn world can leave under pressure");
@@ -55,7 +56,10 @@ int main()
     check(std::strcmp(target, "$user$Scope/Depth") == 0, "named RT identity is preserved");
     char sky[] = "Sky/Weather/Clouds";
     CanonicalizeFileName(sky);
-    check(DemandOnly(sky) && DemandOnly("map\\jupiter") && DemandOnly("ui\\pda"), "cold image families");
+    check(DemandOnly(sky) && DemandOnly("ui\\pda"), "optional image families remain demand-loaded");
+    for (const char* name : {"map\\jupiter", "map\\subfolder\\escape", "ui\\ui_global_map", "ui\\ui_nomap2"})
+        check(PdaMap(name) && !DemandOnly(name), "PDA map preloads and is retained");
+    check(!PdaMap(nullptr) && !PdaMap("maple\\tree") && !PdaMap("ui\\ui_global_map_icons"), "only actual map families retained");
     check(!DemandOnly("skybox") && !DemandOnly("weapons\\scope") && !DemandOnly("$user$sky"), "no prefix collisions");
     std::printf("texture residency: %u checks passed\n", checks);
 }

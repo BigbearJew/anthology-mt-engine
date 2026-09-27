@@ -161,7 +161,12 @@ float4 main(p_screen I) : SV_Target
 	float4 motion_vectors = s_motion_vectors.SampleLevel(smp_point, find_closest_fragment_3x3(s_motion_vectors, I.tc0.xy).xy, 0);
 
 	// Skip mask ( w == 1.0 )
-	float mask = saturate(s_mv.SampleLevel(smp_point, I.tc0.xy, 0).w);
+	float4 native_motion = s_mv.SampleLevel(smp_point, I.tc0.xy, 0);
+	// PDA screen is a non-jittered forward overlay (HUD z=2, skip w=1).
+	// Preserve its native texel positions; do not unjitter or accumulate UI text.
+	if (native_motion.z > 1.5f && native_motion.w >= 1.0f)
+		return float4(s_current.SampleLevel(smp_point, I.tc0.xy, 0).xyz, 1.0f);
+	float mask = saturate(native_motion.w);
 
 	// UV Reprojection
 	float2 uv_rp = I.tc0.xy - motion_vectors.xy;

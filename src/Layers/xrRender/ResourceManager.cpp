@@ -659,7 +659,7 @@ void CResourceManager::QueueTextureLoad(const ref_texture& texture)
 	if (!texture)
 		return;
 #if defined(USE_DX10) || defined(USE_DX11)
-	// Weather descriptors and PDA maps exist long before their images are shown.
+	// Weather and optional UI images are demand-loaded; PDA maps preload here.
 	if (texture->IsDemandOnly())
 		return;
 #endif
@@ -1150,10 +1150,15 @@ void CResourceManager::UnloadAllTexturesOnLevelUnload()
 			if (strstr(*texture->cName, "$"))
 				continue;
 
-			// Keep UI textures
+			// UI map shaders can survive a level change. Keep their images too;
+			// otherwise the cached shader reloads the map on its first Draw.
 			LPCSTR name = pair.first;
 			if (strncmp(name, "ui\\", 3) == 0 || strncmp(name, "ui/", 3) == 0)
 				continue;
+#if defined(USE_DX10) || defined(USE_DX11)
+			if (texture_residency::PdaMap(name))
+				continue;
+#endif
 
 			textures_to_unload.emplace_back(texture);
 		}
@@ -1289,7 +1294,7 @@ void CResourceManager::TrimUnusedTextures()
 	if (u32(now - m_textureBudgetAt) >= 1000)
 	{
 		if (!m_textureBudgetAt)
-			Msg("* [texture-residency] v157: demand-loaded sky/maps/ui, 64-bit accounting, bounded idle trim");
+			Msg("* [texture-residency] v165: PDA maps preloaded/retained, sky/optional UI demand-loaded, bounded world trim");
 		m_textureBudgetAt = now;
 		IDXGIAdapter3* adapter = nullptr;
 		if (HW.m_pAdapter && SUCCEEDED(HW.m_pAdapter->QueryInterface(__uuidof(IDXGIAdapter3), reinterpret_cast<void**>(&adapter))))
