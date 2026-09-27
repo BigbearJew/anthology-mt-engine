@@ -333,31 +333,28 @@ float CStepManager::get_blend_time()
 void CStepManager::material_sound::play_next(SGameMtlPair* mtl_pair, CEntityAlive* object, float volume,
                                              bool b_hud_mode)
 {
-	if (mtl_pair->StepSounds.empty())
+	const SoundVec& stepSounds = mtl_pair->SeasonalStepSounds();
+	if (stepSounds.empty())
 		return;
 
 	Fvector sound_pos = object->Position();
 	sound_pos.y += 0.5;
 
-	if (last_mtl_pair != mtl_pair || m_last_step_sound_played == u8(-1))
-	{
-		m_last_step_sound_played = u8(Random.randI(mtl_pair->StepSounds.size()));
-		last_mtl_pair = mtl_pair;
-	}
+	const auto soundCount = stepSounds.size();
+	if (soundCount == 1)
+		m_last_step_sound_played = 0;
+	else if (last_mtl_pair != mtl_pair || m_last_step_sound_played >= soundCount)
+		m_last_step_sound_played = u8(Random.randI(soundCount));
 	else
-	{
-		u8 new_played = u8(
-			(m_last_step_sound_played + 1 + Random.randI(mtl_pair->StepSounds.size() - 1)) % mtl_pair
-			                                                                                 ->StepSounds.size());
-
-		m_last_step_sound_played = new_played;
-	}
+		m_last_step_sound_played = u8((m_last_step_sound_played + 1 + Random.randI(soundCount - 1)) % soundCount);
+	last_mtl_pair = mtl_pair;
 
 	float vol = (b_hud_mode) ? volume * psHUDStepSoundVolume : volume;
 	if (b_hud_mode)
 		sound_pos.set(0, 0, 0);
 
-	mtl_pair->StepSounds[m_last_step_sound_played].play_no_feedback(object,
+	ref_sound sound = stepSounds[m_last_step_sound_played];
+	sound.play_no_feedback(object,
 	                                                                b_hud_mode ? sm_2D : 0,
 	                                                                0,
 	                                                                &sound_pos,

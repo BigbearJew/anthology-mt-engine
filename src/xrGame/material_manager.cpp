@@ -99,10 +99,9 @@ void CMaterialManager::update(float time_delta, float volume, float step_time, b
 	{
 		if (m_time_to_step < 0)
 		{
-			SoundVec& snd_array = mtl_pair->StepSounds;
-
-			if (m_run_mode && mtl_pair->BreakingSounds.size() > 0)
-				snd_array = mtl_pair->BreakingSounds;
+            const SoundVec& snd_array = m_run_mode && !mtl_pair->BreakingSounds.empty() &&
+                !(anthology::runtime_season() == 4 && !mtl_pair->WinterStepSounds.empty())
+                ? mtl_pair->BreakingSounds : mtl_pair->SeasonalStepSounds();
 
 			if (snd_array.size() > 0)
 			{

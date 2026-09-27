@@ -108,6 +108,7 @@ SGameMtlPair::~SGameMtlPair()
 	// destroy all media
 	DestroySounds(BreakingSounds);
 	DestroySounds(StepSounds);
+	DestroySounds(WinterStepSounds);
 	DestroySounds(CollideSounds);
 	DestroyPSs(CollideParticles);
 	// DestroyMarks (CollideMarks);
@@ -172,5 +173,25 @@ void SGameMtlPair::CreateSoundResources()
 {
 	CreateSoundsImpl(BreakingSounds, BreakingSoundsStr.c_str());
 	CreateSoundsImpl(StepSounds, StepSoundsStr.c_str());
+    // The ice collision record keeps its material ID. Select its footsteps
+    // independently from summer water sounds and preserve all other pair data.
+    const auto water = [this](int id) {
+        const SGameMtl* material = m_Owner->GetMaterialByID(id);
+        return material && (!_stricmp(material->m_Name.c_str(), "materials\\water") ||
+                            !_stricmp(material->m_Name.c_str(), "materials\\water_radiation"));
+    };
+    if (!StepSounds.empty() && (water(GetMtl0()) || water(GetMtl1())))
+    {
+        string_path resolved;
+        bool complete = true;
+        for (int index = 1; index <= 4; ++index)
+        {
+            string128 name;
+            xr_sprintf(name, "anthology_seasons\\ice\\n_ice_%d", index);
+            complete = complete && FS.exist(resolved, "$game_sounds$", name, ".ogg");
+        }
+        if (complete)
+            CreateSoundsImpl(WinterStepSounds, "anthology_seasons\\ice\\n_ice_1,anthology_seasons\\ice\\n_ice_2,anthology_seasons\\ice\\n_ice_3,anthology_seasons\\ice\\n_ice_4");
+    }
 	CreateSoundsImpl(CollideSounds, CollideSoundsStr.c_str());
 }

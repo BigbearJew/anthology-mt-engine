@@ -29,6 +29,8 @@ void dxWallMarkArray::AppendMark(LPCSTR s_textures)
 			sh_name = "effects\\wallmark_blood";
 	}
 
+    if (strstr(s_textures, "anthology_snow_step"))
+        sh_name = "effects\\anthology_snow_step";
 	s.create(sh_name, s_textures);
 
 #else

@@ -188,6 +188,11 @@ public:
 	// properties
 	SoundVec BreakingSounds;
 	SoundVec StepSounds;
+    SoundVec WinterStepSounds;
+    const SoundVec& SeasonalStepSounds() const
+    {
+        return anthology::runtime_season() == 4 && !WinterStepSounds.empty() ? WinterStepSounds : StepSounds;
+    }
 	SoundVec CollideSounds;
 	PSVec CollideParticles;
 
