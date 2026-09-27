@@ -14,6 +14,9 @@ class ScriptWallmarksManager
 {
 private:
 	xr_vector<ScriptWallmarksArray*> m_script_wallmarks;
+	void PlaceWallmarkInternal(Fvector dir, Fvector start_pos, float trace_dist,
+		float wallmark_size, LPCSTR section, CScriptGameObject* ignore_obj,
+		float ttl, float rotation, const Fvector* forward);
 
 public:
 	ScriptWallmarksManager();
@@ -31,6 +34,9 @@ public:
 		CScriptGameObject* ignore_obj, float ttl, float rotation);
 	void PlaceSkeletonWallmark(CScriptGameObject* obj, LPCSTR section, Fvector start,
 		Fvector dir, float size, float ttl);
+	void PlaceWallmarkOriented(Fvector dir, Fvector start_pos, float trace_dist,
+		float wallmark_size, LPCSTR section, CScriptGameObject* ignore_obj,
+		float ttl, Fvector forward);
 };
 
 typedef class_exporter<ScriptWallmarksManager> CScriptWallmarksManager;

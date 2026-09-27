@@ -1,0 +1,33 @@
+-- SSS rain footsteps are a separate overlay above the material step sound.
+local hooked = false
+
+local function frozen()
+    local seasons = anthology_runtime_seasons
+    return seasons and type(seasons.get_style) == 'function' and seasons.get_style() == 4
+end
+
+function first_update()
+    if hooked then return end
+    local rain = ssfx_rain_footsteps
+    if not rain then return end
+    if type(rain.actor_on_footstep) == 'function' then
+        local original = rain.actor_on_footstep
+        UnregisterScriptCallback('actor_on_footstep', original)
+        rain.actor_on_footstep = function(...)
+            if not frozen() then return original(...) end
+        end
+        RegisterScriptCallback('actor_on_footstep', rain.actor_on_footstep)
+    end
+    -- The jump/land callbacks resolve this public function when invoked.
+    if type(rain.ssfx_JumpLand_Snd) == 'function' then
+        local original = rain.ssfx_JumpLand_Snd
+        rain.ssfx_JumpLand_Snd = function(...)
+            if not frozen() then return original(...) end
+        end
+    end
+    hooked = true
+end
+
+function on_game_start()
+    RegisterScriptCallback('actor_on_first_update', first_update)
+end

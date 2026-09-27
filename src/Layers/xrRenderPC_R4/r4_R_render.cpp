@@ -701,8 +701,18 @@ void CRenderTarget::phase_svp_scene()
 		return;
 	// Ordinary optics return before the display SMAA pass in phase_combine.
 	// Resolve edges here, once per fresh capture, in the active PiP RT bank.
-	const bool liveTaa = ps_scope_lense_temporal_mode == 2 && RImplementation.o.ssfx_motionvectors &&
+	const bool liveTaa = ps_ssfx_taa.x > 0 && RImplementation.o.ssfx_motionvectors &&
 		!RImplementation.o.dx10_msaa;
+	static const bool captureDiagnostics = strstr(Core.Params, "-season_diagnostics") != nullptr;
+	static u32 lastCaptureSettings = u32(-1);
+	const u32 captureSettings = u32(ps_scope_lense_temporal_mode) |
+		(u32(ps_scope_lense_update_interval) << 4) | (u32(liveTaa) << 12);
+	if (captureDiagnostics && lastCaptureSettings != captureSettings)
+	{
+		lastCaptureSettings = captureSettings;
+		Msg("* [PiP/capture-AA] enabled=%u mode=%d interval=%d size=%ux%u",
+			u32(liveTaa), ps_scope_lense_temporal_mode, ps_scope_lense_update_interval, m_renderWidth, m_renderHeight);
+	}
 	if (!liveTaa) phase_smaa();
 	RCache.set_Stencil(FALSE);
 	// Read generic0 while it still belongs to the active PiP bank, before LUT,
@@ -723,7 +733,10 @@ void CRenderTarget::phase_svp_scene()
 			HW.pContext->ClearRenderTargetView(rt_svpTemporal[0]->pRT, clear);
 			HW.pContext->ClearRenderTargetView(rt_svpTemporal[1]->pRT, clear);
 		}
-		const bool valid = Device.dwFrame - m_svpTemporalFrame <= 2 && !Device.dwPrecacheFrame &&
+		// History advances on captures, not presentation frames. Interval 4 must
+		// retain its preceding capture instead of invalidating it every time.
+		const u32 captureGap = u32(_max(1, ps_scope_lense_update_interval)) + 1;
+		const bool valid = Device.dwFrame - m_svpTemporalFrame <= captureGap && !Device.dwPrecacheFrame &&
 			m_svpTemporalWidth == m_renderWidth &&
 			_abs(m_svpTemporalProjection._11 - Device.mProject._11) < .001f;
 		Fmatrix inverse, currentToPrevious;
@@ -827,7 +840,7 @@ void CRenderTarget::begin_svp_live_effects()
     const bool vendorMask = view == 0 && m_upscalerActive;
     const bool pipMask = ps_scope_lense_live_effects && ps_scope_lense_update_interval > 1 &&
         Device.m_SecondViewport.IsSVPActive() && svp_motion_supported();
-    const bool liveTaaMask = view == 1 && ps_scope_lense_temporal_mode == 2 &&
+    const bool liveTaaMask = view == 1 && ps_ssfx_taa.x > 0 &&
         RImplementation.o.ssfx_motionvectors && !RImplementation.o.dx10_msaa;
     if (!vendorMask && !pipMask && !liveTaaMask)
         return;

@@ -1,0 +1,25 @@
+#include "common.h"
+uniform float4 anthology_flora_style;
+Texture2D s_tread;
+
+float tread(float2 uv)
+{
+    float3 c = s_tread.Sample(smp_base, uv).rgb;
+    // Original Pools of Blood tread has red marks on neutral grey.
+    return saturate((c.r - c.g) * 5.0);
+}
+
+float4 main(p_TL I) : SV_Target
+{
+    float2 uv = I.Tex0;
+    float a = tread(uv);
+    float2 stepUV = max(fwidth(uv), 1.0/256.0);
+    float top = tread(uv + float2(0, stepUV.y));
+    float bottom = tread(uv - float2(0, stepUV.y));
+    // Shallow indentation: quiet tread recesses with an opposing snow lip.
+    // Multiplicative wallmarks are neutral at 0.5, not black ink.
+    float imprint = a * 0.045 + (top - bottom) * 0.035;
+    float winter = 1.0 - step(0.1, abs(anthology_flora_style.x - 4.0));
+    float factor = 0.5 - imprint * winter * (1.0 - I.Color.a);
+    return float4(factor.xxx, 1);
+}

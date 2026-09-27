@@ -1,3 +1,7 @@
+#ifndef ANTHOLOGY_FLORA_STYLE_DECLARED
+#define ANTHOLOGY_FLORA_STYLE_DECLARED
+uniform float4 anthology_flora_style;
+#endif
 #include "common.h"
 #include "screenspace_mvectors.h"
 
@@ -7,7 +11,7 @@
 #undef main
 
 Texture2D s_lod_texture_winter;
-uniform float4 anthology_flora_style;
+
 
 static const float2 anthology_winter_lod_offset[4] =
 {
@@ -17,8 +21,16 @@ static const float2 anthology_winter_lod_offset[4] =
     float2(0.65f, 0.65f)
 };
 
+#include "anthology_snow_ground.h"
 f_deffer main(p_flat I)
 {
+    [branch] if (abs(anthology_flora_style.x - 4.0) < 0.1)
+    {
+        f_deffer snow = anthology_snow_ground(I.position.xyz, I.N.xyz, s_base.Sample(smp_base, I.tcdh));
+        snow.velocity = ssfx_mv_calc(I.vel_curr, I.vel_prev, 0, 0);
+        return snow;
+    }
+
     if (anthology_flora_style.x >= 5.5f)
     {
         f_deffer original = anthology_default_terrain_low(I);

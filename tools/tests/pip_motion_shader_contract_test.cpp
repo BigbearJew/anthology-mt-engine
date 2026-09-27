@@ -37,6 +37,16 @@ int main(int argc, char** argv)
     Check(r3 == r4);
     Check(IsPipMotionOwnerShaderCompatible(r3.data(), r3.size()));
     Check(IsPipMotionOwnerShaderCompatible(r4.data(), r4.size()));
+    std::vector<char> windows;
+    for (char c : r3)
+    {
+        if (c == '\r') continue;
+        if (c == '\n') windows.push_back('\r');
+        windows.push_back(c);
+    }
+    Check(IsPipMotionOwnerShaderCompatible(windows.data(), windows.size()));
+    windows.push_back('\r');
+    Check(!IsPipMotionOwnerShaderCompatible(windows.data(), windows.size()));
     Check(!IsPipMotionOwnerShaderCompatible(nullptr, 0));
     Check(!IsPipMotionOwnerShaderCompatible(nullptr, r3.size()));
     Check(!IsPipMotionOwnerShaderCompatible(r3.data(), std::numeric_limits<std::size_t>::max()));

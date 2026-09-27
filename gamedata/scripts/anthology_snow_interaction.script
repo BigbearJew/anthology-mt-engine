@@ -1,0 +1,113 @@
+-- Step callbacks only. Positions are transient scalars; no save data or update scan.
+local states, state_count, last_cleanup = {}, 0, 0
+local window, count, npc_hooked = 0, 0, false
+local enabled, lifetime, npc_distance, budget = true, 60, 25, 8
+local ground_ray, roof_ray, manager
+local ground_material = {
+    ['materials\\earth']=true, ['materials\\grass']=true,
+    ['materials\\sand']=true, ['materials\\gravel']=true,
+    ['materials\\asphalt']=true, ['materials\\dirt']=true,
+    ['materials\\earth_slide']=true,
+}
+
+local function winter()
+    return enabled and anthology_runtime_seasons and anthology_runtime_seasons.get_style() == 4
+end
+
+local function foot_bone(obj, name, centre)
+    local id = obj:get_bone_id(name)
+    if not id or id == 65535 then return end
+    local p = obj:bone_position(id)
+    if p and math.abs(p.y-centre.y)<0.6 and p:distance_to_sqr(centre)<1 then return p end
+end
+
+local function place(obj, actor_step)
+    if not ground_ray or not winter() or not obj or not (db and db.actor) then return end
+    local now = time_global()
+    if now < window or now-window >= 1000 then window,count=now,0 end
+    if count>=budget then return end
+    local centre=obj:position()
+    if not actor_step and centre:distance_to_sqr(db.actor:position())>npc_distance*npc_distance then return end
+    if now<last_cleanup or now-last_cleanup>1000 then
+        for id,s in pairs(states) do
+            if now<s.time or now-s.time>10000 then states[id]=nil;state_count=state_count-1 end
+        end
+        last_cleanup=now
+    end
+    local id=obj:id()
+    local s=states[id]
+    if not s then
+        if state_count>=64 then return end
+        s={time=now-1000,side=false};states[id]=s;state_count=state_count+1
+    end
+    if now-s.time<(actor_step and 150 or 250) then return end
+    local dx,dz=0,0
+    if s.x then dx,dz=centre.x-s.x,centre.z-s.z end
+    -- Suppress idle callbacks and reset after teleport/load instead of drawing a trail.
+    local distance2=dx*dx+dz*dz
+    if s.x and (distance2<0.0064 or distance2>9) then
+        if distance2>9 then s.x,s.z,s.time=centre.x,centre.z,now end
+        return
+    end
+    s.time,s.x,s.z=now,centre.x,centre.z
+    s.side=not s.side
+    local dir=vector():set(obj:direction());dir.y=0
+    if dir.x*dir.x+dir.z*dir.z<0.01 then return end
+    dir:normalize()
+    local pos
+    -- NPC skeletons follow the animation. First-person actor bones may remain in
+    -- their idle pose, so use the travelled path and separate left/right contacts.
+    if not actor_step then pos=foot_bone(obj,s.side and 'bip01_l_foot' or 'bip01_r_foot',centre) end
+    if not pos then
+        pos=vector():set(centre)
+        local side=s.side and -0.085 or 0.085
+        pos.x,pos.z=pos.x+dir.z*side,pos.z-dir.x*side
+    end
+    pos.y=pos.y+0.35
+    ground_ray:set_position(pos);ground_ray:set_direction(vector():set(0,-1,0))
+    if not ground_ray:query() then return end
+    local hit=ground_ray:get_result()
+    if not hit or type(hit.material_name)~='string' or not ground_material[hit.material_name:lower()] then return end
+    roof_ray:set_position(pos);roof_ray:set_direction(vector():set(0,1,0))
+    if roof_ray:query() then return end
+    count=count+1
+    manager:place_oriented(vector():set(0,-1,0),pos,1.2,0.18,
+        'anthology_snow_footprint',obj,lifetime,dir)
+    return true
+end
+
+function actor_on_footstep()
+    return place(db and db.actor,true)
+end
+
+function first_update()
+    states,state_count,last_cleanup,window,count={},0,0,0,0
+    if not (ray_pick and wallmarks_manager) then enabled=false;return end
+    manager=wallmarks_manager()
+    if not manager.place_oriented then
+        enabled=false;printf('! [snow] Oriented wallmarks require the matching v164 engine');return
+    end
+    local ini=system_ini();local section='anthology_snow_interaction'
+    enabled=true
+    if ini:section_exist(section) then
+        if ini:line_exist(section,'enabled') then enabled=ini:r_bool(section,'enabled') end
+        if ini:line_exist(section,'lifetime') then lifetime=math.max(5,math.min(120,ini:r_float(section,'lifetime'))) end
+        if ini:line_exist(section,'npc_distance') then npc_distance=math.max(0,math.min(40,ini:r_float(section,'npc_distance'))) end
+        if ini:line_exist(section,'marks_per_second') then budget=math.max(1,math.min(12,ini:r_float(section,'marks_per_second'))) end
+    end
+    ground_ray=ray_pick();ground_ray:set_flags(2);ground_ray:set_range(1.2)
+    roof_ray=ray_pick();roof_ray:set_flags(2);roof_ray:set_range(20)
+    if not npc_hooked and z_npc_footsteps and type(z_npc_footsteps.npc_on_foot_step)=='function' then
+        local original=z_npc_footsteps.npc_on_foot_step
+        z_npc_footsteps.npc_on_foot_step=function(binder,obj,power,play,on_ground,hud)
+            original(binder,obj,power,play,on_ground,hud)
+            if play and on_ground then place(obj,false) end
+        end
+        npc_hooked=true
+    end
+end
+
+function on_game_start()
+    RegisterScriptCallback('actor_on_first_update',first_update)
+    RegisterScriptCallback('actor_on_footstep',actor_on_footstep)
+end

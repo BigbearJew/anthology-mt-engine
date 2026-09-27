@@ -21,6 +21,7 @@ void CScriptWallmarksManager::script_register(lua_State *L)
 		// demonized: add user defined rotation to wallmark
 		.def("place", (void (ScriptWallmarksManager::*)(Fvector, Fvector, float, float, LPCSTR, CScriptGameObject*, float, float))(&ScriptWallmarksManager::PlaceWallmark))
 
+		.def("place_oriented", &ScriptWallmarksManager::PlaceWallmarkOriented)
 		.def("place_skeleton", &ScriptWallmarksManager::PlaceSkeletonWallmark),
 
 		def("wallmarks_manager", &GetManager)

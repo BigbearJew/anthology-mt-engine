@@ -64,6 +64,20 @@ void ScriptWallmarksManager::PlaceWallmark(Fvector dir, Fvector start_pos,
 	float trace_dist, float wallmark_size, LPCSTR section,
 	CScriptGameObject* ignore_obj, float ttl, float rotation)
 {
+	PlaceWallmarkInternal(dir, start_pos, trace_dist, wallmark_size, section, ignore_obj, ttl, rotation, nullptr);
+}
+
+void ScriptWallmarksManager::PlaceWallmarkOriented(Fvector dir, Fvector start_pos,
+	float trace_dist, float wallmark_size, LPCSTR section,
+	CScriptGameObject* ignore_obj, float ttl, Fvector forward)
+{
+	PlaceWallmarkInternal(dir, start_pos, trace_dist, wallmark_size, section, ignore_obj, ttl, 0.f, &forward);
+}
+
+void ScriptWallmarksManager::PlaceWallmarkInternal(Fvector dir, Fvector start_pos,
+	float trace_dist, float wallmark_size, LPCSTR section,
+	CScriptGameObject* ignore_obj, float ttl, float rotation, const Fvector* forward)
+{
 	collide::rq_result result;
 	BOOL reach_wall =
 		Level().ObjectSpace.RayPick(
@@ -88,6 +102,23 @@ void ScriptWallmarksManager::PlaceWallmark(Fvector dir, Fvector start_pos,
 			Fvector end_point;
 			end_point.set(0, 0, 0);
 			end_point.mad(start_pos, dir, result.range);
+			if (forward)
+			{
+				// Match CWallmarksEngine::BuildMatrix, including its pole switch on flat ground.
+				Fvector normal, axis, right, up, at, projected;
+				normal.mknormal(pVerts[pTri->verts[0]], pVerts[pTri->verts[1]], pVerts[pTri->verts[2]]);
+				axis.set(0.f, 1.f, 0.f);
+				if (_abs(normal.y) > .99f) axis.set(1.f, 0.f, 0.f);
+				right.crossproduct(axis, normal);
+				up.crossproduct(normal, right);
+				at.sub(end_point, normal);
+				Fmatrix projection;
+				projection.build_camera(end_point, at, up);
+				projection.transform_dir(projected, *forward);
+				if (projected.x * projected.x + projected.y * projected.y < EPS_S) return;
+				// UV top is +projection Y; rotate the supplied tangent onto that axis.
+				rotation = rad2deg(atan2f(projected.x, projected.y));
+			}
 
 			::Render->add_StaticWallmark(FindSection(section), end_point, wallmark_size, pTri, pVerts, ttl, true, rotation);
 		}

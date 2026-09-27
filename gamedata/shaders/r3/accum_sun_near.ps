@@ -78,9 +78,7 @@ float4 main ( v2p_volume I ) : SV_Target
 			s *= shadow( PS );
 
 #ifdef SSFX_SSS
-	float sss_mask = saturate(s_ssfx_sss.Sample( smp_nofilter, I.tc.xy / I.tc.w ).b);
-	// The lens camera now has its own directional shadow result.
-	s *= sss_mask;
+	s *= saturate(s_ssfx_sss.Sample( smp_nofilter, I.tc.xy / I.tc.w ).b + ssfx_issvp.x);
 #endif
 
 #ifdef SSFX_ENHANCED_SHADERS // We have Enhanced Shaders installed

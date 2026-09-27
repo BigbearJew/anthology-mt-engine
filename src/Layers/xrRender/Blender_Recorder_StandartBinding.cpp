@@ -1390,7 +1390,7 @@ static Fvector2 main_view_jitter_ndc()
 
 #if defined(USE_DX11)
 	const bool svp_frame = Device.m_SecondViewport.IsSVPFrame();
-	if (svp_frame && ps_scope_lense_temporal_mode == 2 && RImplementation.o.ssfx_motionvectors &&
+	if (svp_frame && RImplementation.o.ssfx_motionvectors && ps_ssfx_taa.x > 0 &&
 		!RImplementation.o.dx10_msaa && !RImplementation.o.dx11_hdr10 &&
 		!Device.m_SecondViewport.IsSVPThermal() && ps_r2_heatvision == 0 && ps_r2_nightvision == 0 &&
 		!(ps_scope_lense_allow_nvg && ps_scope_lense_head_nvg_active))

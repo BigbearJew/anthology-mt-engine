@@ -152,7 +152,9 @@ void uber_deffer(CBlender_Compile& C, bool hq, LPCSTR _vspec, LPCSTR _pspec, BOO
 				"winter", C.L_textures[0].c_str(), anthologyGroundWinter);
 			if (!hasWinterGround)
 				xr_strcpy(anthologyGroundWinter, anthologyGroundDead);
-			anthologyGroundTextures = hasDeadGround || hasWinterGround;
+			// Single-texture soil/ground decals need the same winter surface as
+			// four-layer terrain, including textures without a seasonal DDS.
+			anthologyGroundTextures = true;
 			if (anthologyGroundTextures)
 				_pspec = baseATOC ? "anthology_ground_atoc" : "anthology_ground";
 		}
