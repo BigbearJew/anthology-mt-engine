@@ -21,10 +21,10 @@
 		// excludes the HUD through .z, without destroying the shared vectors.
 		float2 motion_vectors = (current.xy / current.w) - (previous.xy / previous.w);
 		
-		// Negative native masks identify foliage to SSS AO. A zero HUD/history
-		// mask must not erase them; owner IDs occupy only the unmasked channel.
+		// Keep SSS channels independent: z marks the HUD; w is the TAA mask.
+		// A HUD tag must not turn an ordinary weapon pixel into a TAA exclusion.
+		// Preserve explicit masks (including foliage); owners use only zero.
 		float mask = TAAMask;
-		if (IsHUD > 0.0f) mask = max(mask, saturate(IsHUD));
 		if (pip_motion_history.x > 0.0f) mask = max(mask, pip_motion_history.x);
 		if (mask == 0.0f)
 			mask = pip_motion_history.y;

@@ -161,15 +161,7 @@ float4 main(p_screen I) : SV_Target
 	float4 motion_vectors = s_motion_vectors.SampleLevel(smp_point, find_closest_fragment_3x3(s_motion_vectors, I.tc0.xy).xy, 0);
 
 	// Skip mask ( w == 1.0 )
-	float4 raw_motion = s_mv.SampleLevel(smp_point, I.tc0.xy, 0);
-    float mask = saturate(raw_motion.w);
-    // The engine's owner helper tags the HUD with w=1. That is not the
-    // stock SSS exclusion mask. Unknown history (w>=2) still rejects TAA.
-    if (raw_motion.z > 0.5 && raw_motion.w == 1.0)
-    {
-        mask = 0.0;
-        motion_vectors.xy = raw_motion.xy;
-    }
+	float mask = saturate(s_mv.SampleLevel(smp_point, I.tc0.xy, 0).w);
 
 	// UV Reprojection
 	float2 uv_rp = I.tc0.xy - motion_vectors.xy;

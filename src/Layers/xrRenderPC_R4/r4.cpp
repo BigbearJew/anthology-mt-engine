@@ -2078,7 +2078,9 @@ HRESULT CRender::shader_compile(
 	if (useGeneratedShaderCache)
 	{
 		string_path file;
-		xr_strcpy(file, "shaders_cache\\r4\\anthology_pip156f\\");
+		// v164 changes shared motion-mask and SSS includes. Cached bytecode only
+		// validates corruption, so use a fresh namespace for the new contracts.
+		xr_strcpy(file, "shaders_cache\\r4\\anthology_v164_hud\\");
 		xr_strcat(file, name);
 		xr_strcat(file, ".");
 		xr_strcat(file, extension);

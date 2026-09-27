@@ -60,16 +60,29 @@ int main(int argc, char** argv)
             for(const auto& v:z)require(fabsf(v[0]-.75f)<1e-6f,"Device depth export changed");
         }
         std::ofstream(root/"v155_hud_motion_probe.ps") << "#include \"screenspace_mvectors.h\"\n"
-            "float4 main(float4 p:SV_Position,float2 uv:TEXCOORD0):SV_Target { return ssfx_mv_calc(float4(.2,.1,0,1),float4(0,0,0,1),1,0); }\n";
+            "float4 probe_mask;\n"
+            "float4 main(float4 p:SV_Position,float2 uv:TEXCOORD0):SV_Target { return ssfx_mv_calc(float4(.2,.1,0,1),float4(0,0,0,1),probe_mask.x,probe_mask.y); }\n";
         Shader hud(gpu.device.Get(),root/"v155_hud_motion_probe.ps",includes);
-        hud.constant("pip_motion_history",Pixel{0,-.125f,0,0});
-        gpu.draw(hud,output);
-        auto motion=gpu.read(output);
-        for(const auto& v:motion) {
-            require(fabsf(v[0]-.1f)<1e-6f && fabsf(v[1]+.05f)<1e-6f,"HUD motion erased");
-            require(v[2]==1 && v[3]==1,"HUD blur/TAA classification lost");
+        struct MaskCase { float hud,taa,unknown,owner,expected; };
+        const MaskCase cases[] = {
+            {1,0,0,0,0},             // Ordinary hands retain TAA.
+            {1,0,0,-.125f,-.125f},  // A reliable HUD owner is not an exclusion.
+            {1,1,0,-.125f,1},       // Explicit mbody/exclusion stays excluded.
+            {0,-1,0,-.125f,-1},     // Native foliage classification survives.
+            {1,0,2,-.125f,2},       // Unknown HUD history still rejects TAA.
+            {0,0,0,-.125f,-.125f},
+            {0,0,0,0,0}
+        };
+        for(const auto& test:cases) {
+            hud.constant("probe_mask",Pixel{test.hud,test.taa,0,0});
+            hud.constant("pip_motion_history",Pixel{test.unknown,test.owner,0,0});
+            gpu.draw(hud,output);
+            for(const auto& v:gpu.read(output)) {
+                require(fabsf(v[0]-.1f)<1e-6f && fabsf(v[1]+.05f)<1e-6f,"HUD motion erased");
+                require(v[2]==test.hud && v[3]==test.expected,"HUD tag contaminated TAA/foliage/owner mask");
+            }
         }
-        puts("PASS: 384 color channels, 128 depth exports, 64 HUD motion/mask samples");
+        puts("PASS: 384 color channels, 128 depth exports, 448 independent HUD/TAA/owner/foliage samples");
         captureFilter(gpu,root,includes);
         return 0;
     } catch(const std::exception& e) {fprintf(stderr,"FAIL: %s\n",e.what());return 1;}

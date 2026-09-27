@@ -27,5 +27,6 @@ inline bool IsPipMotionOwnerShaderCompatible(const void* data, std::size_t size)
         hash = (hash ^ bytes[index]) * 1099511628211ull;
         ++normalizedSize;
     }
-    return normalizedSize == 1360 && hash == 0x389bf8377fc4b042ull;
+    return (normalizedSize == 1360 && hash == 0x389bf8377fc4b042ull) ||
+        (normalizedSize == 1376 && hash == 0xfb0395adaa89476full); // v164: independent HUD/TAA masks
 }

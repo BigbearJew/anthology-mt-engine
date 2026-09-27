@@ -39,7 +39,6 @@ float4 main(p_screen I) : SV_Target
 
 		// [ xy = MV | z = HUD Mask ] The s_motion_vectors is declared on "screenspace_shadows.h"
 		float3 Motion_Vectors = s_motion_vectors.Sample(smp_nofilter, tc);
-	Motion_Vectors.xy *= 1.0f - saturate(Motion_Vectors.z);
 
 		// Reconstruct Position, Normal and Material
 		float3 P 	= float3( Pos.z * ( Pos2D * pos_decompression_params.zw - pos_decompression_params.xy ), Pos.z );
