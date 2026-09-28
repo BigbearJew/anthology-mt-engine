@@ -43,22 +43,26 @@ function on_mcm_load()
     }
     -- Keep this subtree absent on older executables.
     if get_console_cmd and tonumber(get_console_cmd(0,"r4_snow_height")) then
-        options.gr[#options.gr+1]={id="winter",sh=true,gr={
-            {id="about",type="desc",text="ui_mcm_anthology_runtime_seasons_winter_about"},
-            {id="enabled",type="list",val=2,cmd="r4_snow_enabled",no_str=true,content={{0,"ui_mcm_anthology_snow_off"},{1,"ui_mcm_anthology_snow_on"}}},
-            {id="height",type="track",val=2,cmd="r4_snow_height",min=0,max=1.2,step=0.05,prec=2},
-            {id="distance",type="track",val=2,cmd="r4_snow_distance",min=5,max=60,step=5,prec=0},
-            {id="density",type="track",val=2,cmd="r4_snow_density",min=0,max=1,step=0.05,prec=2},
-            {id="variation",type="track",val=2,cmd="r4_snow_variation",min=0,max=1,step=0.05,prec=2},
-            {id="drift_size",type="track",val=2,cmd="r4_snow_drift_size",min=0.5,max=20,step=0.5,prec=1},
-            {id="resistance",type="track",val=2,cmd="r4_snow_resistance",min=0,max=0.9,step=0.05,prec=2},
-            {id="fall_enabled",type="list",val=2,cmd="r4_snow_fall_enabled",no_str=true,content={{0,"ui_mcm_anthology_snow_off"},{1,"ui_mcm_anthology_snow_on"}}},
-            {id="flake_size",type="track",val=2,cmd="r4_snow_flake_size",min=0.25,max=2,step=0.05,prec=2},
-            {id="fall_speed",type="track",val=2,cmd="r4_snow_fall_speed",min=0.25,max=4,step=0.05,prec=2},
-            {id="fall_density",type="track",val=2,cmd="r4_snow_fall_density",min=0,max=2,step=0.1,prec=1},
-            {id="fall_distance",type="track",val=2,cmd="r4_snow_fall_distance",min=5,max=60,step=5,prec=0},
-            {id="wind",type="track",val=2,cmd="r4_snow_wind",min=0,max=2,step=0.1,prec=1},
-        }}
+        -- sh=true is a leaf page in MCM; it cannot contain another page.
+        options.gr[#options.gr+1]={id="winter_line",type="line"}
+        options.gr[#options.gr+1]={id="winter",type="title",text="ui_mcm_anthology_runtime_seasons_winter"}
+        options.gr[#options.gr+1]={id="winter_about",type="desc",text="ui_mcm_anthology_runtime_seasons_winter_about"}
+        local winter_options={
+            {id="winter_enabled",type="list",val=2,cmd="r4_snow_enabled",no_str=true,content={{0,"ui_mcm_anthology_snow_off"},{1,"ui_mcm_anthology_snow_on"}}},
+            {id="winter_height",type="track",val=2,cmd="r4_snow_height",min=0,max=1.2,step=0.05,prec=2},
+            {id="winter_distance",type="track",val=2,cmd="r4_snow_distance",min=5,max=60,step=5,prec=0},
+            {id="winter_density",type="track",val=2,cmd="r4_snow_density",min=0,max=1,step=0.05,prec=2},
+            {id="winter_variation",type="track",val=2,cmd="r4_snow_variation",min=0,max=1,step=0.05,prec=2},
+            {id="winter_drift_size",type="track",val=2,cmd="r4_snow_drift_size",min=0.5,max=20,step=0.5,prec=1},
+            {id="winter_resistance",type="track",val=2,cmd="r4_snow_resistance",min=0,max=0.9,step=0.05,prec=2},
+            {id="winter_fall_enabled",type="list",val=2,cmd="r4_snow_fall_enabled",no_str=true,content={{0,"ui_mcm_anthology_snow_off"},{1,"ui_mcm_anthology_snow_on"}}},
+            {id="winter_flake_size",type="track",val=2,cmd="r4_snow_flake_size",min=0.25,max=2,step=0.05,prec=2},
+            {id="winter_fall_speed",type="track",val=2,cmd="r4_snow_fall_speed",min=0.25,max=4,step=0.05,prec=2},
+            {id="winter_fall_density",type="track",val=2,cmd="r4_snow_fall_density",min=0,max=2,step=0.1,prec=1},
+            {id="winter_fall_distance",type="track",val=2,cmd="r4_snow_fall_distance",min=5,max=60,step=5,prec=0},
+            {id="winter_wind",type="track",val=2,cmd="r4_snow_wind",min=0,max=2,step=0.1,prec=1},
+        }
+        for _, option in ipairs(winter_options) do options.gr[#options.gr+1]=option end
     end
     return options
 end
