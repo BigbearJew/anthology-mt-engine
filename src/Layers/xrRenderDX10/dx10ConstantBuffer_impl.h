@@ -2,6 +2,23 @@
 #define	dx10ConstantBuffer_impl_included
 #pragma once
 
+#include "ConstantBufferValue.h"
+
+IC void dx10ConstantBuffer::Store(u16 offset, const void* value, u32 bytes)
+{
+	VERIFY(u32(offset) + bytes <= m_uiBufferSize);
+	// Diagnostic A/B switch; normal launches always use the value cache.
+	static const bool legacy = strstr(Core.Params, "-cb_legacy_uploads") != nullptr;
+	if (legacy)
+	{
+		CopyMemory(static_cast<BYTE*>(m_pBufferData) + offset, value, bytes);
+		m_bChanged = true;
+		return;
+	}
+	if (StoreConstantBufferValue(static_cast<BYTE*>(m_pBufferData) + offset, value, bytes))
+		m_bChanged = true;
+}
+
 IC Fvector4* dx10ConstantBuffer::Access(u16 offset)
 {
 	//	TODO: DX10: Implement code which will check if set actually changes code.
@@ -62,7 +79,6 @@ IC void dx10ConstantBuffer::set(R_constant* C, R_constant_load& L, const Fvector
 	//it->set	(A);
 
 	VERIFY(u32((u32)L.index+lineSize) <= m_uiBufferSize);
-	float* it = (float*)Access(L.index);
 
 	size_t count = 4;
 	switch (L.cls)
@@ -80,7 +96,7 @@ IC void dx10ConstantBuffer::set(R_constant* C, R_constant_load& L, const Fvector
 		break;
 	}
 
-	CopyMemory(it, &A[0], count*sizeof(float));
+	Store(L.index, &A[0], u32(count * sizeof(float)));
 
 	//c_f.access	(L.index)->set	(A);
 	//c_f.dirty	(L.index,L.index+1);
@@ -90,9 +106,8 @@ IC void dx10ConstantBuffer::set(R_constant* C, R_constant_load& L, float A)
 {
 	VERIFY(RC_float == C->type);
 	VERIFY(RC_1x1 == L.cls);
-	float* it = (float*)Access(L.index);
 	VERIFY(u32((u32)L.index+sizeof(float)) <= m_uiBufferSize);
-	*it = A;
+	Store(L.index, &A, sizeof(A));
 
 	//c_f.access	(L.index)->set	(A);
 	//c_f.dirty	(L.index,L.index+1);
@@ -102,9 +117,8 @@ IC void dx10ConstantBuffer::set(R_constant* C, R_constant_load& L, int A)
 {
 	VERIFY(RC_int == C->type);
 	VERIFY(RC_1x1 == L.cls);
-	int* it = (int*)Access(L.index);
 	VERIFY(u32((u32)L.index+sizeof(int)) <= m_uiBufferSize);
-	*it = A;
+	Store(L.index, &A, sizeof(A));
 
 	//c_f.access	(L.index)->set	(A);
 	//c_f.dirty	(L.index,L.index+1);

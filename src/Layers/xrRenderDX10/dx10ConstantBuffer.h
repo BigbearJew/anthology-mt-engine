@@ -30,6 +30,7 @@ public:
 
 private:
 	Fvector4* Access(u16 offset);
+	void Store(u16 offset, const void* value, u32 bytes);
 
 private:
 	shared_str m_strBufferName;

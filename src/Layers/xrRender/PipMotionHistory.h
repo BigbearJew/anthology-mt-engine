@@ -17,7 +17,8 @@ class PipMotionHistoryScope
     {
         void operator()(const RenderMotionDrawState& state) const
         {
-            RCache.set_c("pip_motion_history", state.unknown, state.owner, 0.f, 0.f);
+            static shared_str name("pip_motion_history");
+            RCache.set_c(name, state.unknown, state.owner, 0.f, 0.f);
         }
     } sink;
     RenderMotionDrawScope<ConstantSink> scope;
@@ -29,9 +30,20 @@ class PipMotionHistoryScope
             staticWorld, owner ? owner->GetRenderSurfaceOwnerId() : 0.f);
     }
 
+    explicit PipMotionHistoryScope(const RenderMotionDrawState& packet)
+        // Binding a shader table already initializes the inactive constant to
+        // zero. Do not dirty/upload its buffer again for every ordinary draw.
+        : scope(CurrentPipMotionDraw(), packet, sink, packet.active || LegacyUploads()) {}
+
+    static bool LegacyUploads()
+    {
+        static const bool legacy = strstr(Core.Params, "-cb_legacy_uploads") != nullptr;
+        return legacy;
+    }
+
 public:
     PipMotionHistoryScope(IRenderable* owner, bool staticWorld)
-        : scope(CurrentPipMotionDraw(), Packet(owner, staticWorld), sink) {}
+        : PipMotionHistoryScope(Packet(owner, staticWorld)) {}
 
     explicit PipMotionHistoryScope(bool reliableHistory)
         : scope(CurrentPipMotionDraw(), CurrentPipMotionDraw().WithHistory(reliableHistory), sink, false) {}

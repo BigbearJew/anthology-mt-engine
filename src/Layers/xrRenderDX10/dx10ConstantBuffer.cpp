@@ -4,6 +4,37 @@
 #include "dx10BufferUtils.h"
 #include "../xrRender/dxRenderDeviceRender.h"
 
+namespace
+{
+struct ConstantUploadProfile
+{
+    u32 frame = u32(-1), frames = 0;
+    u64 maps = 0, bytes = 0, mapTicks = 0, maxMapTicks = 0;
+    bool Enabled() const
+    {
+        static const bool requested = strstr(Core.Params, "-cb_profile") != nullptr;
+        return requested && CPU::qpc_freq && !Device.dwPrecacheFrame;
+    }
+    void Record(u64 elapsed, u32 size)
+    {
+        if (frame != Device.dwFrame)
+        {
+            frame = Device.dwFrame;
+            if (frames >= 300)
+            {
+                const double ms = 1000.0 / double(CPU::qpc_freq);
+                Msg("* [constant-upload/profile] maps/frame=%.1f MiB/frame=%.3f Map-ms/frame=%.3f max-Map-ms=%.3f",
+                    double(maps) / frames, double(bytes) / (1048576.0 * frames),
+                    double(mapTicks) * ms / frames, double(maxMapTicks) * ms);
+                frames = 0; maps = bytes = mapTicks = maxMapTicks = 0;
+            }
+            ++frames;
+        }
+        ++maps; bytes += size; mapTicks += elapsed; maxMapTicks = std::max(maxMapTicks, elapsed);
+    }
+} uploadProfile;
+}
+
 dx10ConstantBuffer::~dx10ConstantBuffer()
 {
 	if (Device.m_pRender && DEV)
@@ -50,6 +81,7 @@ dx10ConstantBuffer::dx10ConstantBuffer(ID3DShaderReflectionConstantBuffer* pTabl
 	VERIFY(m_pBuffer);
 	m_pBufferData = xr_malloc(Desc.Size);
 	VERIFY(m_pBufferData);
+	ZeroMemory(m_pBufferData, Desc.Size);
 }
 
 bool dx10ConstantBuffer::Similar(dx10ConstantBuffer& _in)
@@ -86,6 +118,8 @@ void dx10ConstantBuffer::Flush()
     if (m_bChanged)
     {
         void    *pData;
+        const bool measure = uploadProfile.Enabled();
+        const u64 started = measure ? CPU::QPC() : 0;
 #ifdef USE_DX11
         D3D11_MAPPED_SUBRESOURCE    pSubRes;
         CHK_DX(HW.pContext->Map(m_pBuffer, 0, D3D_MAP_WRITE_DISCARD, 0, &pSubRes));
@@ -93,6 +127,7 @@ void dx10ConstantBuffer::Flush()
 #else
         CHK_DX(m_pBuffer->Map(D3D_MAP_WRITE_DISCARD, 0, &pData));
 #endif
+        if (measure) uploadProfile.Record(CPU::QPC() - started, m_uiBufferSize);
         VERIFY(pData);
         VERIFY(m_pBufferData);
         CopyMemory(pData, m_pBufferData, m_uiBufferSize);
