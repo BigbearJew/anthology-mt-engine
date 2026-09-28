@@ -734,6 +734,7 @@
     <ClCompile Include="r4_rendertarget_phase_ssao.cpp" />
     <ClCompile Include="r4_R_rain.cpp" />
     <ClCompile Include="r4_R_render.cpp" />
+    <ClCompile Include="SnowRenderer.cpp" />
     <ClCompile Include="UpscalerRuntime.cpp" />
     <ClCompile Include="OverlayAPI\DLSSWrapper.cpp" />
     <ClCompile Include="OverlayAPI\FSR3Wrapper.cpp" />

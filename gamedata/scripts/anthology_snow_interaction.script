@@ -11,6 +11,12 @@ local ground_material = {
 }
 
 local function winter()
+    if get_console_cmd then
+        local cover=tonumber(get_console_cmd(0,"r4_snow_enabled"))
+        if cover and cover>=0.5 and
+            (tonumber(get_console_cmd(0,"r4_snow_height")) or 0)>0.001 and
+            (tonumber(get_console_cmd(0,"r4_snow_density")) or 0)>0 then return false end
+    end
     return enabled and anthology_runtime_seasons and anthology_runtime_seasons.get_style() == 4
 end
 

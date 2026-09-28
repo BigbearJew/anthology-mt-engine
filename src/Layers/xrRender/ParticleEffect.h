@@ -30,6 +30,7 @@ namespace PS
 		Fvector m_InitialPosition;
 	public:
 		CPEDef* m_Def;
+        bool m_SeasonSnow = false;
 		Fmatrix m_XFORM;
 	protected:
 		DestroyCallback m_DestroyCallback;

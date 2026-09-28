@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+  <string id="ui_mcm_anthology_runtime_seasons_winter"><text>Зима</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_about"><text>Объёмный покров действует в зимнем сезоне. Глубокий снег сильнее замедляет движение; протоптанный — слабее. Высота 0 отключает объём. Используются прежние снежинки. Множители 1 и радиус 45 м сохраняют исходный эффект. Плотность и радиус меняются по мере обновления частиц.</text></string>
+  <string id="ui_mcm_anthology_snow_off"><text>Выкл.</text></string>
+  <string id="ui_mcm_anthology_snow_on"><text>Вкл.</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_enabled"><text>Снежный покров</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_height"><text>Высота снега, м</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_distance"><text>Дальность покрова, м</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_density"><text>Плотность покрова</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_variation"><text>Разброс высоты</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_drift_size"><text>Размер сугробов, м</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_resistance"><text>Сопротивление движению</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_fall_enabled"><text>Снегопад</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_flake_size"><text>Размер прежних снежинок, множитель</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_fall_speed"><text>Скорость падения, множитель</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_fall_density"><text>Плотность снегопада</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_fall_distance"><text>Радиус снегопада, м</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_wind"><text>Влияние ветра</text></string>
+</string_table>

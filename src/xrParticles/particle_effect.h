@@ -16,6 +16,8 @@ namespace PAPI
 
 		void* owner;
 		u32 param;
+        bool seasonSnow = false;
+        float snowProfileTime = 0.f;
 
 		static xrCriticalSection mParticleRemoveCS;
 	public:

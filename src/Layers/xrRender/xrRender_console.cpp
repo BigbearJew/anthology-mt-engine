@@ -643,6 +643,23 @@ float r_rain_k = 99.0f;
 #include "../xrRenderDX10/StateManager/dx10SamplerStateCache.h"
 #endif	//	USE_DX10
 
+#include "../../xrCore/SnowField.h"
+class CCC_SnowValue : public CCC_Float
+{
+    anthology::snow::Parameter parameter;
+    float setting;
+public:
+    CCC_SnowValue(LPCSTR name, anthology::snow::Parameter p)
+        : CCC_Float(name,&setting,anthology::snow::Minimum(p),anthology::snow::Maximum(p)),
+          parameter(p),setting(anthology::snow::Get(p)) {}
+    void Execute(LPCSTR args) override
+    {
+        CCC_Float::Execute(args);
+        anthology::snow::Set(parameter,setting);
+        setting=anthology::snow::Get(parameter);
+    }
+};
+
 class CCC_FloraStyle : public CCC_Integer
 {
 public:
@@ -1192,6 +1209,21 @@ void xrRender_initconsole()
 
 	CMD4(CCC_Float, "r__dtex_range", &r__dtex_range, 5, 175);
 	CMD4(CCC_FloraStyle, "r__flora_style", &ps_r__FloraStyle, 1, 6);
+#if defined(USE_DX11)
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_enabled",anthology::snow::Parameter(0)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_height",anthology::snow::Parameter(1)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_distance",anthology::snow::Parameter(2)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_density",anthology::snow::Parameter(3)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_variation",anthology::snow::Parameter(4)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_drift_size",anthology::snow::Parameter(5)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_resistance",anthology::snow::Parameter(6)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_fall_enabled",anthology::snow::Parameter(7)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_flake_size",anthology::snow::Parameter(8)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_fall_speed",anthology::snow::Parameter(9)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_fall_density",anthology::snow::Parameter(10)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_fall_distance",anthology::snow::Parameter(11)));
+    Console->AddCommand(xr_new<CCC_SnowValue>("r4_snow_wind",anthology::snow::Parameter(12)));
+#endif
 
 	// Common
 	CMD1(CCC_Screenshot, "screenshot");

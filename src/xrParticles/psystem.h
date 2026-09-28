@@ -279,6 +279,7 @@ namespace PAPI
 		virtual void SetCallback(int effect_id, OnBirthParticleCB b, OnDeadParticleCB d, void* owner, u32 param) =0;
 		virtual void GetParticles(int effect_id, Particle*& particles, u32& cnt) =0;
 		virtual u32 GetParticlesCount(int effect_id) =0;
+        virtual void SetSeasonSnow(int effect_id, bool enabled) =0;
 
 		// action
 		virtual ParticleAction* CreateAction(PActionEnum type) =0;

@@ -1,0 +1,42 @@
+#include "common.h"
+#include "screenspace_mvectors.h"
+#include "anthology_snow_field.h"
+#ifdef USE_MSAA
+Texture2DMS<float4, MSAA_SAMPLES> snow_base_position;
+Texture2DMS<float4, MSAA_SAMPLES> snow_base_color;
+#else
+Texture2D<float4> snow_base_position;
+Texture2D<float4> snow_base_color;
+#endif
+struct snow_output {
+    float4 hpos:SV_Position;
+    float3 world:TEXCOORD0;
+    float3 view:TEXCOORD1;
+    float4 current:TEXCOORD2;
+    float4 previous:TEXCOORD3;
+    float cover:TEXCOORD4;
+    float3 normal:TEXCOORD5;
+};
+f_deffer main(snow_output I)
+{
+    float3 N=normalize(I.normal);
+    if(N.y<0) N=-N;
+    // Fine detail fades before becoming subpixel noise in the distance.
+    float footprint=max(length(ddx(I.world)),length(ddy(I.world)));
+    float detail=1-smoothstep(.008,.04,footprint);
+    float grain=snow_field_noise(I.world.xz*83.0)-.5;
+    float broad=snow_field_noise(I.world.xz*.55);
+    float3 viewN=mul((float3x3)m_V,N);
+#ifdef USE_MSAA
+    float4 ground=snow_base_position.Load(int2(I.hpos.xy),0);
+    float4 color=snow_base_color.Load(int2(I.hpos.xy),0);
+#else
+    float4 ground=snow_base_position.Load(int3(I.hpos.xy,0));
+    float4 color=snow_base_color.Load(int3(I.hpos.xy,0));
+#endif
+    float3 albedo=(.65+.10*broad+grain*.04*detail)*float3(.94,.97,1);
+    albedo=lerp(color.rgb,albedo,smoothstep(0,1,I.cover));
+    f_deffer O=pack_gbuffer(float4(viewN,gbuf_unpack_hemi(ground.w)),float4(I.view,.95),float4(albedo,.035));
+    O.velocity=ssfx_mv_calc(I.current,I.previous,0,0);
+    return O;
+}

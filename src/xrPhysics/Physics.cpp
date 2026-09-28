@@ -1,4 +1,5 @@
 #include "StdAfx.h"
+#include "../xrCore/SnowField.h"
 #include "PHDynamicData.h"
 #include "Physics.h"
 #include "tri-colliderknoopc/dTriList.h"
@@ -262,6 +263,18 @@ IC static int CollideIntoGroup(dGeomID o1, dGeomID o2, dJointGroupID jointGroup,
 		}
 
 
+        if (do_collide && (is_tri_1 || is_tri_2) && !pushing_neg &&
+            _abs(cgeom.normal[1]) > .5f && anthology::snow::Active())
+        {
+            const float depth=anthology::snow::Contacts().At(cgeom.pos[0],cgeom.pos[1],cgeom.pos[2]);
+            if (depth>.002f)
+            {
+                anthology::snow::Touches().Push(cgeom.pos[0],cgeom.pos[1],cgeom.pos[2],.22f);
+                if (surface.mu>0.f && surface.mu<10.f)
+                    surface.mu *= 1.f + anthology::snow::Get(anthology::snow::Resistance)*
+                        anthology::snow::Saturate(depth/.6f)*2.f;
+            }
+        }
 		if (pushing_neg)
 			surface.mu = flt_max;
 		if (do_collide && collided_contacts < MAX_CONTACTS)

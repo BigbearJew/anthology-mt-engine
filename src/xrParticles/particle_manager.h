@@ -52,6 +52,8 @@ namespace PAPI
         virtual void				GetParticles(int effect_id, Particle*& particles, u32& cnt);
         virtual u32					GetParticlesCount(int effect_id);
 
+        virtual void SetSeasonSnow(int effect_id, bool enabled) override;
+
         // action
         virtual ParticleAction* CreateAction(PActionEnum action_id);
         virtual u32					LoadActions(int alist_id, IReader& R);

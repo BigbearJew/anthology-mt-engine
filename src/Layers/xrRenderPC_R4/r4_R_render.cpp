@@ -11,6 +11,8 @@
 
 #include "../xrRender/QueryHelper.h"
 #include "UpscalerRuntime.h"
+#include "SnowRenderer.h"
+#include "../../xrCore/SnowField.h"
 #include <dxgi1_4.h>
 
 namespace
@@ -384,6 +386,8 @@ void CRender::Render()
 		PIX_EVENT(DEFER_PART1_SPLIT);
 		// level
 		Target->phase_scene_begin();
+		if (!Snow && anthology::snow::Active()) Snow = xr_new<CSnowRenderer>();
+		if (Snow) Snow->Render();
 		GMBase.r_dsgraph_capture_hud();
 		GMBase.r_dsgraph_render_hud();
 		GMBase.r_dsgraph_render_lods(true,true);

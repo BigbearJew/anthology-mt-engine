@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "SnowRenderer.h"
 #include "r4.h"
 #include "../xrRender/ResourceManager.h"
 #include "../xrRender/fbasicvisual.h"
@@ -1307,6 +1308,7 @@ void CRender::EvictLevelCacheUnderPressure()
 
 void CRender::DestroyActiveLevel()
 {
+    if (Snow) Snow->Clear();
 	if (!b_loaded)
 		return;
 	dxRenderDeviceRender::Instance().Resources->WaitForTextureLoads();

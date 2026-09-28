@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "../xrCore/SnowField.h"
 #pragma hdrstop
 
 #include "particle_actions_collection.h"
@@ -1077,6 +1078,11 @@ void PAMatchVelocity::Transform(const Fmatrix&) { ; }
 
 void PAMove::Execute(ParticleEffect* effect, const float dt, float& tm_max)
 {
+    // Keep age, turbulence, atlas animation and the original velocity intact.
+    const bool snow=effect->seasonSnow;
+    const float fall=snow ? anthology::snow::Get(anthology::snow::FallSpeed) : 1.f;
+    const float wind=snow ? anthology::snow::Get(anthology::snow::Wind) : 1.f;
+    const float beforeY=(snow && effect->p_count) ? effect->particles[0].pos.y : 0.f;
 	// Step particle positions forward by dt, and age the particles.
 	for (u32 i = 0; i < effect->p_count; i++)
 	{
@@ -1085,8 +1091,26 @@ void PAMove::Execute(ParticleEffect* effect, const float dt, float& tm_max)
 		m.age += dt;
 		m.posB = m.pos;
 		//        m.velB 	= m.vel;
-		m.pos += m.vel * dt;
+        if(snow && (fall!=1.f || wind!=1.f))
+        {
+            m.pos.x += m.vel.x * (dt*wind);
+            m.pos.y += m.vel.y * (dt*fall);
+            m.pos.z += m.vel.z * (dt*wind);
+        }
+        else m.pos += m.vel * dt;
 	}
+    if(snow)
+    {
+        static const bool profile=strstr(Core.Params,"-snow_profile")!=nullptr;
+        if(profile && (effect->snowProfileTime+=dt)>=1.f && effect->p_count)
+        {
+            effect->snowProfileTime=0.f;
+            Msg("* [SNOW_PARTICLES] count=%u size=%.3f speed=%.3f density=%.3f radius=%.1f wind=%.3f dy_dt=%.4f expected=%.4f",
+                effect->p_count,anthology::snow::Get(anthology::snow::FlakeSize),fall,
+                anthology::snow::Get(anthology::snow::FallDensity),anthology::snow::Get(anthology::snow::FallDistance),wind,
+                (effect->particles[0].pos.y-beforeY)/dt,effect->particles[0].vel.y*fall);
+        }
+    }
 }
 
 void PAMove::Transform(const Fmatrix&) { ; }
@@ -1395,10 +1419,16 @@ void PASource::Execute(ParticleEffect* effect, const float dt, float& tm_max)
 {
 	if (m_Flags.is(flSilent)) return;
 
-	int rate = int(floor(particle_rate * dt));
+    const bool snow=effect->seasonSnow;
+    const float radiusScale=snow ? anthology::snow::Get(anthology::snow::FallDistance)/45.f : 1.f;
+    // Density is a multiplier of the original emission rate; the asset's cap stays bounded.
+    const float rateScale=snow ? (anthology::snow::Get(anthology::snow::FallEnabled)>=.5f ?
+        anthology::snow::Get(anthology::snow::FallDensity) : 0.f) : 1.f;
+    const float emission=particle_rate*dt*rateScale;
+    int rate = int(floor(emission));
 
-	// Dither the fraction particle in time.
-	if (drand48() < particle_rate * dt - float(rate))
+    // Dither the fraction particle in time.
+    if (drand48() < emission - float(rate))
 		rate++;
 
 	// Don't emit more than it can hold.
@@ -1411,8 +1441,13 @@ void PASource::Execute(ParticleEffect* effect, const float dt, float& tm_max)
 	{
 		for (int i = 0; i < rate; i++)
 		{
-			position.Generate(pos);
-			size.Generate(siz);
+            position.Generate(pos);
+            if(snow && radiusScale!=1.f)
+            {
+                pos.x=position.p1.x+(pos.x-position.p1.x)*radiusScale;
+                pos.z=position.p1.z+(pos.z-position.p1.z)*radiusScale;
+            }
+            size.Generate(siz);
 			if (m_Flags.is(flSingleSize)) siz.set(siz.x, siz.x, siz.x);
 			rot.Generate(rt);
 			velocity.Generate(vel);
@@ -1427,8 +1462,13 @@ void PASource::Execute(ParticleEffect* effect, const float dt, float& tm_max)
 	{
 		for (int i = 0; i < rate; i++)
 		{
-			position.Generate(pos);
-			size.Generate(siz);
+            position.Generate(pos);
+            if(snow && radiusScale!=1.f)
+            {
+                pos.x=position.p1.x+(pos.x-position.p1.x)*radiusScale;
+                pos.z=position.p1.z+(pos.z-position.p1.z)*radiusScale;
+            }
+            size.Generate(siz);
 			if (m_Flags.is(flSingleSize)) siz.set(siz.x, siz.x, siz.x);
 			rot.Generate(rt);
 			velocity.Generate(vel);

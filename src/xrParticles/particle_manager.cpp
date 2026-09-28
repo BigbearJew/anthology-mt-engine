@@ -227,6 +227,12 @@ void CParticleManager::RemoveParticle(int effect_id, u32 p_id)
 	pe->Remove(p_id);
 }
 
+void CParticleManager::SetSeasonSnow(int effect_id, bool enabled)
+{
+    SharedParticleEffect effect=GetEffectPtr(effect_id);
+    if(effect) effect->seasonSnow=enabled;
+}
+
 void CParticleManager::SetMaxParticles(int effect_id, u32 max_particles)
 {
 	SharedParticleEffect pe = GetEffectPtr(effect_id);

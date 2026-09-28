@@ -1,0 +1,358 @@
+-- Snow-season adaptation of Project I.N.V.E.R.N.O. Snowfall.
+-- Original snowfall script: Daedalus-Prime, demonized, Fabio Conte,
+-- crazewastaken. Seasonal integration and runtime guards: Anthology project.
+-- The balanced profile intentionally uses one compact visible-snow emitter
+-- that follows the camera with a short forward lead. The lead and bounded
+-- particle lifetime keep moving actors inside the visible snowfall volume.
+-- The original Heavy profile stacked several effects and a duplicate
+-- forward-camera layer, which could turn the view into a white particle wall.
+
+local WINTER_STYLE = 4
+local LATE_AUTUMN_STYLE = 5
+local STYLE_CHECK_INTERVAL = 100
+local COVER_CHECK_INTERVAL = 200
+local PARTICLE_FORWARD_OFFSET = 8
+local STATE_VERSION = 1
+local SAVE_VERSION_KEY = "anthology_runtime_snowfall_version"
+local SAVE_KEY = "anthology_runtime_snowfall_inside_pos"
+
+local particle_defs = {
+    {name = "anthology_seasons\\snow_balanced", block_inside = true},
+}
+
+local PROFILE_SNOW = {[1] = true}
+
+local particles
+local active = false
+local snowfall_enabled = true
+local next_style_check = 0
+local next_cover_check = 0
+local cached_inside = false
+local cached_underground = false
+local inside_pos
+local last_weather
+local last_native_rain = 0
+local last_effect_status
+local last_effect_weather
+
+local function log(message)
+    if printf then
+        printf("[anthology_runtime_snowfall] %s", message)
+    end
+end
+
+local function get_style()
+    if anthology_runtime_seasons and anthology_runtime_seasons.get_style then
+        return anthology_runtime_seasons.get_style()
+    end
+
+    local console = get_console and get_console()
+    if not console then
+        return 1
+    end
+
+    local value = tonumber(console:get_integer("r__flora_style")) or 1
+    return clamp(math.floor(value), 1, 6)
+end
+
+local function is_snow_style(style)
+    return style == WINTER_STYLE or style == LATE_AUTUMN_STYLE
+end
+
+local function ensure_particles()
+    if particles then
+        return
+    end
+
+    particles = {}
+    for index, definition in ipairs(particle_defs) do
+        particles[index] = {
+            definition = definition,
+            base = particles_object(definition.name),
+        }
+    end
+
+    log("Project I.N.V.E.R.N.O. visible balanced particle set loaded")
+end
+
+local function stop_particle(particle, immediate)
+    if not particle or not particle:playing() then
+        return
+    end
+
+    if immediate then
+        particle:stop()
+    else
+        particle:stop_deffered()
+    end
+end
+
+local function stop_all_particles(immediate)
+    if not particles then
+        return
+    end
+
+    for _, item in ipairs(particles) do
+        stop_particle(item.base, immediate)
+    end
+end
+
+local function set_particle_position(particle, position)
+    if particle:playing() then
+        particle:move_to(position, VEC_ZERO)
+    else
+        particle:play_at_pos(position)
+    end
+end
+
+local function switch_particles(profile, position, is_inside)
+    ensure_particles()
+
+    local base_pos = position or device().cam_pos
+    local effect_pos = vector():set(base_pos):add(
+        vector():set(device().cam_dir):mul(PARTICLE_FORWARD_OFFSET)
+    )
+
+    local requested = false
+    local playing = false
+
+    for index, item in ipairs(particles) do
+        local enabled = profile[index] and not (is_inside and item.definition.block_inside)
+        if enabled then
+            requested = true
+            set_particle_position(item.base, effect_pos)
+            playing = item.base:playing() or playing
+        else
+            stop_particle(item.base, false)
+        end
+    end
+
+    return requested, playing
+end
+
+local function report_effect_status(status, weather_name)
+    if status == last_effect_status and weather_name == last_effect_weather then
+        return
+    end
+
+    last_effect_status = status
+    last_effect_weather = weather_name
+
+    if status == "playing" then
+        log("particle playing: weather=" .. tostring(weather_name)
+            .. "; effect=anthology_seasons\\snow_balanced")
+    elseif status == "play_failed" then
+        log("particle was requested but is not playing: weather=" .. tostring(weather_name))
+    elseif status == "cover" then
+        log("particle stopped under cover")
+    elseif status == "underground" then
+        log("particle stopped underground")
+    elseif status == "no_profile" then
+        log("particle stopped: no snowfall profile for weather=" .. tostring(weather_name))
+    elseif status == "level_unavailable" then
+        log("particle waiting for level weather")
+    end
+end
+
+local ray_args = {range = 30}
+
+local function cast_ray(position, direction)
+    local pick = ray_pick()
+    pick:set_position(vector():set(position))
+    pick:set_direction(vector():set(direction))
+    pick:set_flags(ray_args.flags or 2)
+    pick:set_range(ray_args.range)
+    pick:query()
+    return pick
+end
+
+local function detect_cover()
+    local cam_pos = device().cam_pos
+    local underground = GetEvent and GetEvent("underground") or false
+    if underground then
+        return false, true
+    end
+
+    local ray_1 = cast_ray(cam_pos, VEC_Y)
+    local ray_2 = cast_ray(cam_pos, vector():set(VEC_Y):add(vector():set(1.5, 0, 0)))
+    local ray_3 = cast_ray(cam_pos, vector():set(VEC_Y):add(vector():set(-1.5, 0, 0)))
+    local ray_4 = cast_ray(cam_pos, vector():set(VEC_Y):add(vector():set(0, 0, 1.5)))
+    local ray_5 = cast_ray(cam_pos, vector():set(VEC_Y):add(vector():set(0, 0, -1.5)))
+    local ray_cover = ray_1:get_distance() > 0
+        and ray_2:get_distance() > 0
+        and ray_3:get_distance() > 0
+        and ray_4:get_distance() > 0
+        and ray_5:get_distance() > 0
+    local safe_cover = GetEvent and GetEvent("current_safe_cover") or false
+
+    return safe_cover or ray_cover, false
+end
+
+local function update_cover_state(now)
+    if now < next_cover_check then
+        return
+    end
+
+    next_cover_check = now + COVER_CHECK_INTERVAL
+    cached_inside, cached_underground = detect_cover()
+
+    if cached_underground or not cached_inside then
+        inside_pos = nil
+    elseif not inside_pos then
+        inside_pos = vector():set(device().cam_pos)
+    end
+end
+
+local function get_inside_effect_position()
+    if not cached_inside or not inside_pos then
+        return nil
+    end
+
+    local cam_pos = device().cam_pos
+    return vector():set(inside_pos.x, cam_pos.y, inside_pos.z)
+end
+
+local function choose_profile()
+    -- This function is reached only while Winter or Late Autumn is active.
+    -- Cover/underground checks below still stop the effect where snow cannot fall.
+    return PROFILE_SNOW
+end
+
+local function suppress_native_storm_weather()
+    if not level then
+        last_native_rain = 0
+        return
+    end
+
+    last_native_rain = level and level.rain_factor and level.rain_factor() or 0
+    if weather and weather.set_value_numric then
+        weather.set_value_numric("rain_density", 0)
+        weather.set_value_numric("thunderbolt_duration", 0)
+        weather.set_value_numric("thunderbolt_period", 0)
+    end
+
+    if weather and weather.set_value_string then
+        weather.set_value_string("thunderbolt_collection", "")
+    end
+end
+
+local function reset_runtime_state()
+    stop_all_particles(true)
+    cached_inside = false
+    cached_underground = false
+    inside_pos = nil
+    next_cover_check = 0
+    last_weather = nil
+    last_native_rain = 0
+    last_effect_status = nil
+    last_effect_weather = nil
+end
+
+local function set_active(value)
+    if active == value then
+        return
+    end
+
+    active = value
+    if active then
+        ensure_particles()
+        if level_environment and level_environment.droplets_reset then
+            level_environment.droplets_reset()
+        end
+        log("enabled for Winter/Late Autumn styles 4/5; continuous snow and native rain/thunder suppression active")
+    else
+        reset_runtime_state()
+        log("disabled outside Winter/Late Autumn styles 4/5")
+    end
+end
+
+local function update_active_state(now)
+    if now < next_style_check then
+        return active
+    end
+
+    next_style_check = now + STYLE_CHECK_INTERVAL
+    snowfall_enabled = true
+    if get_console_cmd then
+        local enabled = tonumber(get_console_cmd(0,"r4_snow_fall_enabled"))
+        local density = tonumber(get_console_cmd(0,"r4_snow_fall_density"))
+        snowfall_enabled = (not enabled or enabled >= 0.5) and (not density or density > 0)
+    end
+    set_active(is_snow_style(get_style()))
+    return active
+end
+
+function actor_on_update()
+    local now = time_global()
+    if not update_active_state(now) then
+        return
+    end
+
+    if not level or not level.get_weather then
+        stop_all_particles(false)
+        report_effect_status("level_unavailable", nil)
+        return
+    end
+
+    suppress_native_storm_weather()
+    if not snowfall_enabled then
+        stop_all_particles(true)
+        return
+    end
+    update_cover_state(now)
+
+    if cached_underground then
+        stop_all_particles(false)
+        report_effect_status("underground", nil)
+        return
+    end
+
+    last_weather = level and level.get_weather and level.get_weather() or nil
+    local profile = choose_profile()
+    local requested, playing = switch_particles(
+        profile,
+        get_inside_effect_position(),
+        cached_inside
+    )
+
+    if cached_inside then
+        report_effect_status("cover", last_weather)
+    elseif requested then
+        report_effect_status(playing and "playing" or "play_failed", last_weather)
+    else
+        report_effect_status("no_profile", last_weather)
+    end
+end
+
+function save_state(m_data)
+    if type(m_data) ~= "table" then
+        return
+    end
+
+    m_data[SAVE_VERSION_KEY] = STATE_VERSION
+    m_data[SAVE_KEY] = active and inside_pos and utils_data.vector_to_string(inside_pos) or nil
+end
+
+function load_state(m_data)
+    reset_runtime_state()
+    active = false
+    next_style_check = 0
+
+    if type(m_data) == "table" and m_data[SAVE_KEY] then
+        inside_pos = utils_data.string_to_vector(m_data[SAVE_KEY])
+    end
+end
+
+function is_active()
+    return active
+end
+
+function get_last_weather()
+    return last_weather, last_native_rain
+end
+
+function on_game_start()
+    RegisterScriptCallback("actor_on_update", actor_on_update)
+    RegisterScriptCallback("save_state", save_state)
+    RegisterScriptCallback("load_state", load_state)
+end

@@ -24,10 +24,13 @@
 #include "../../xrEngine/fmesh.h"
 
 class dxRender_Visual;
+class CSnowRenderer;
 
 // definition
 class CRender : public IRender_interface, public pureFrame
 {
+public:
+    CSnowRenderer* Snow = nullptr;
 public:
 	enum
 	{

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<string_table>
+  <string id="ui_mcm_anthology_runtime_seasons_winter"><text>Winter</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_about"><text>Volume cover is active in Winter. Deep snow slows movement more than compressed snow. Height 0 disables volume. The original flakes are retained. Multipliers 1 and radius 45 m preserve the original effect. Density and radius take effect as particles respawn.</text></string>
+  <string id="ui_mcm_anthology_snow_off"><text>Off</text></string>
+  <string id="ui_mcm_anthology_snow_on"><text>On</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_enabled"><text>Snow cover</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_height"><text>Snow height, m</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_distance"><text>Cover distance, m</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_density"><text>Cover density</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_variation"><text>Height variation</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_drift_size"><text>Drift size, m</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_resistance"><text>Movement resistance</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_fall_enabled"><text>Snowfall</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_flake_size"><text>Original snowflake size, multiplier</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_fall_speed"><text>Fall speed, multiplier</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_fall_density"><text>Snowfall density</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_fall_distance"><text>Snowfall radius, m</text></string>
+  <string id="ui_mcm_anthology_runtime_seasons_winter_wind"><text>Wind influence</text></string>
+</string_table>

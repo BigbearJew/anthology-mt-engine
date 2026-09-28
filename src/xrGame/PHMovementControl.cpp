@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "phmovementcontrol.h"
+#include "../xrCore/SnowField.h"
 
 #include "../xrEngine/cl_intersect.h"
 #include "../xrserverentities/alife_space.h"
@@ -151,6 +152,8 @@ void CPHMovementControl::Calculate(Fvector& vAccel, const Fvector& camDir, float
 		bExernalImpulse = false;
 	}
 
+	if (Environment() == peOnGround && fis_zero(jump))
+		vAccel.mul(anthology::snow::Movement(vPosition.x,vPosition.y,vPosition.z));
 	float mAccel = vAccel.magnitude();
 	m_character->SetCamDir(camDir);
 	m_character->SetMaximumVelocity(mAccel / 10.f);
@@ -400,6 +403,8 @@ void CPHMovementControl::Calculate(const xr_vector<DetailPathManager::STravelPat
 		bExernalImpulse = false;
 	}
 
+	if (Environment() == peOnGround && !m_character->JumpState())
+		speed *= anthology::snow::Movement(vPosition.x,vPosition.y,vPosition.z);
 	m_character->SetMaximumVelocity(speed);
 
 	if (add_deviation)

@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "../../xrCore/SnowField.h"
 #pragma hdrstop
 
 #include "ParticleEffect.h"
@@ -193,7 +194,7 @@ void CParticleEffect::OnFrame(u32 frame_dt)
 						if (m.size.y > p_size) p_size = m.size.y;
 						if (m.size.z > p_size) p_size = m.size.z;
 					}
-					vis.box.grow(p_size);
+					vis.box.grow(p_size*(m_SeasonSnow ? anthology::snow::Get(anthology::snow::FlakeSize) : 1.f));
 					vis.box.getsphere(vis.sphere.P, vis.sphere.R);
 				}
 				if (m_RT_Flags.is(flRT_DefferedStop) && (0 == p_cnt))
@@ -236,7 +237,7 @@ void CParticleEffect::OnFrame(u32 frame_dt)
 					if (m.size.y > p_size) p_size = m.size.y;
 					if (m.size.z > p_size) p_size = m.size.z;
 				}
-				vis.box.grow(p_size);
+				vis.box.grow(p_size*(m_SeasonSnow ? anthology::snow::Get(anthology::snow::FlakeSize) : 1.f));
 				vis.box.getsphere(vis.sphere.P, vis.sphere.R);
 			}
 			
@@ -268,7 +269,13 @@ void CParticleEffect::OnFrame(u32 frame_dt)
 
 BOOL CParticleEffect::Compile(CPEDef* def)
 {
-	m_Def = def;
+    m_Def = def;
+#if defined(USE_DX11)
+    m_SeasonSnow=def && def->Name() && 0==xr_strcmp(def->Name(),"anthology_seasons\\effects\\snow_balanced");
+#endif
+    ParticleManager()->SetSeasonSnow(m_HandleEffect,m_SeasonSnow);
+    if(m_SeasonSnow && strstr(Core.Params,"-snow_profile"))
+        Msg("* [SNOW_PARTICLES] original effect=%s texture=%s",def->Name(),*def->m_TextureName);
 	if (m_Def)
 	{
 		// refresh shader
@@ -512,6 +519,7 @@ __forceinline void magnitude_sse(Fvector& vec, float& res)
 
 bool ParticleRenderStream(FVF::LIT* pv, u32 count, PAPI::Particle * particles, CParticleEffect * pPE)
 {
+    const float snowSize=pPE->m_SeasonSnow ? anthology::snow::Get(anthology::snow::FlakeSize) : 1.f;
 	float sina = 0.0f, cosa = 0.0f;
 	// Xottab_DUTY: changed angle to be float instead of DWORD
 	// But it must be 0xFFFFFFFF or otherwise some particles won't play
@@ -562,8 +570,8 @@ bool ParticleRenderStream(FVF::LIT* pv, u32 count, PAPI::Particle * particles, C
 		if (pPE->m_Def->m_Flags.is(CPEDef::dfFramed))
 			pPE->m_Def->m_Frame.CalculateTC(iFloor(float(m.frame) / 255.f), lt, rb);
 
-		float r_x = m.sizeI.x * 0.5f;
-		float r_y = m.sizeI.y * 0.5f;
+		float r_x = m.sizeI.x * (0.5f*snowSize);
+		float r_y = m.sizeI.y * (0.5f*snowSize);
 		float speed = 0.f;
 		bool speed_calculated = false;
 

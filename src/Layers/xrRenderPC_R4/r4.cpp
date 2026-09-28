@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "r4.h"
+#include "SnowRenderer.h"
 #include "../xrRender/fbasicvisual.h"
 #include "../../xrEngine/xr_object.h"
 #include "../../xrEngine/CustomHUD.h"
@@ -577,6 +578,7 @@ void CRender::create()
 
 void CRender::destroy()
 {
+    xr_delete(Snow);
 	m_bMakeAsyncSS = false;
 	WaitLevelPrepare();
 	m_prepared_level_path = nullptr;
@@ -596,6 +598,7 @@ void CRender::destroy()
 
 void CRender::reset_begin()
 {
+    xr_delete(Snow);
 	WaitLevelPrepare();
 	m_prepared_level_path = nullptr;
 	Models->InvalidateBlueprints();
@@ -2087,10 +2090,22 @@ HRESULT CRender::shader_compile(
 		xr_strcat(file, "\\");
 		// This producer is self-contained. Its bytecode CRC checks corruption,
 		// not staleness: include the actual source in its generated-cache key.
-		if (0 == xr_strcmp(name, "svp_motion_map") || 0 == xr_strcmp(name, "effects_sun"))
+		if (0 == xr_strcmp(name, "svp_motion_map") || 0 == xr_strcmp(name, "effects_sun") ||
+            0 == strncmp(name, "anthology_snow_", 15))
 		{
 			string32 sourceKey;
-			xr_sprintf(sourceKey, "%08x_", crc32(pSrcData, SrcDataLen));
+            u32 sourceCRC=crc32(pSrcData,SrcDataLen);
+            if(0==strncmp(name,"anthology_snow_",15))
+            {
+                string_path include;
+                strconcat(sizeof(include),include,::Render->getShaderPath(),"anthology_snow_field.h");
+                if(IReader* header=FS.r_open("$game_shaders$",include))
+                {
+                    sourceCRC=crc32(header->pointer(),header->length(),sourceCRC);
+                    FS.r_close(header);
+                }
+            }
+            xr_sprintf(sourceKey, "%08x_", sourceCRC);
 			xr_strcat(file, sourceKey);
 			Msg("* [pip152/cache] %s source=%s bytes=%u", name, sourceKey, u32(SrcDataLen));
 		}
