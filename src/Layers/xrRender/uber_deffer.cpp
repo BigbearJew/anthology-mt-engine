@@ -86,6 +86,7 @@ static bool anthology_route_flora_shader(LPCSTR vs, LPCSTR& ps, LPCSTR base,
     string512& green, string512& autumn, string512& dead)
 {
     const bool branch = xr_strcmp(ps, "anthology_branch") == 0 || xr_strcmp(ps, "anthology_branch_atoc") == 0;
+    const bool grass = xr_strcmp(ps, "anthology_grass") == 0 || xr_strcmp(ps, "anthology_grass_atoc") == 0;
     const bool seasonal = branch || xr_strcmp(ps, "anthology_flora") == 0 || xr_strcmp(ps, "anthology_flora_atoc") == 0 ||
         xr_strcmp(ps, "anthology_grass") == 0 || xr_strcmp(ps, "anthology_grass_atoc") == 0;
     const bool tree = xr_strcmp(vs, "tree") == 0 || xr_strcmp(vs, "tree_s") == 0 || xr_strcmp(vs, "tree_branch") == 0;
@@ -98,7 +99,9 @@ static bool anthology_route_flora_shader(LPCSTR vs, LPCSTR& ps, LPCSTR base,
         return false;
 
     const bool atoc = strstr(ps, "_atoc") != nullptr;
-    if (!anthology_prepare_flora_textures(base, green, autumn, dead))
+    // Detail atlases such as Dead City's ccon\\cconv1.5 have no seasonal DDS.
+    // Keep the grass adapter: its base-texture fallback still supports snow.
+    if (!anthology_prepare_flora_textures(base, green, autumn, dead) && !grass)
     {
         if (seasonal)
             ps = branch ? (atoc ? "tree_branch_atoc" : "tree_branch") : (atoc ? "base_atoc" : "base");

@@ -26,8 +26,9 @@ class CSnowRenderer
     ref_geom geometry;
     ID3DVertexBuffer* vertexBuffer=nullptr;
     ID3DIndexBuffer* indexBuffer=nullptr;
-    ref_rt basePosition[2], baseColor[2];
-    ref_texture positionTexture, colorTexture;
+    ref_rt basePosition[2];
+    ref_texture positionTexture;
+    int boundPositionBank = -1;
     IGame_Level* level = nullptr;
     float step = .5f, distance = 0.f;
     int centerX = 0, centerZ = 0, radius = 0;

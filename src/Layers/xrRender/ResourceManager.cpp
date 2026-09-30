@@ -1317,6 +1317,14 @@ void CResourceManager::TrimUnusedTextures()
 	}
 	m_texturePressure = texture_residency::Pressure(m_texturePressure, m_textureLocalUsage,
 		m_textureLocalBudget, m_textureMemoryBytes.load(std::memory_order_relaxed), m_textureAvailableRam, m_textureTotalRam);
+	// Idle grace periods are measured in seconds. Scanning 128 resources on
+	// every presented frame adds needless locks/string lookups even without
+	// memory pressure. Keep urgent reclamation responsive and idle work at 4 Hz.
+	static thread_local u32 lastScanAt = 0;
+	static const bool legacyScan = strstr(Core.Params, "-legacy_texture_scan") != nullptr;
+	if (!legacyScan && u32(now - lastScanAt) < (m_texturePressure ? 16u : 250u))
+		return;
+	lastScanAt = now;
 
 	// No iterator survives the lock. A ref keeps a candidate alive across release.
 	// The caller has cleared both D3D bindings and the backend's raw SRV cache.
@@ -1353,6 +1361,23 @@ void CResourceManager::TrimUnusedTextures()
 	}
 	m_textureTrimBytes += released;
 	m_textureTrimCount += count;
+	static const bool profile = strstr(Core.Params, "-texture_profile") != nullptr;
+	if (profile)
+	{
+		static u64 ticks = 0;
+		static u32 scans = 0, reportedAt = now;
+		LARGE_INTEGER finished;
+		QueryPerformanceCounter(&finished);
+		ticks += finished.QuadPart - started.QuadPart;
+		++scans;
+		if (u32(now - reportedAt) >= 5000)
+		{
+			Msg("* [texture-scan/profile] legacy=%u scans=%u total=%.3f ms interval=%u ms pressure=%u",
+				unsigned(legacyScan), scans, double(ticks)*1000.0/double(frequency.QuadPart),
+				u32(now-reportedAt), unsigned(m_texturePressure));
+			ticks=0;scans=0;reportedAt=now;
+		}
+	}
 	if (m_textureTrimCount && u32(now - m_textureTrimLogAt) >= 5000)
 	{
 		Msg("* [texture-residency] released=%u/%.1f MiB allocated=%.1f MiB local=%.1f/%.1f MiB free-ram=%.1f MiB pressure=%u",

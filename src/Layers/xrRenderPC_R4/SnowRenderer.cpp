@@ -14,8 +14,8 @@ void CSnowRenderer::Clear()
     if(vertexBuffer) { HW.stats_manager.decrement_stats_vb(vertexBuffer);_RELEASE(vertexBuffer); }
     if(indexBuffer) { HW.stats_manager.decrement_stats_ib(indexBuffer);_RELEASE(indexBuffer); }
     if(positionTexture) positionTexture->surface_set(nullptr);
-    if(colorTexture) colorTexture->surface_set(nullptr);
-    for(int bank=0;bank<2;++bank) { basePosition[bank].destroy();baseColor[bank].destroy(); }
+    boundPositionBank=-1;
+    for(int bank=0;bank<2;++bank) basePosition[bank].destroy();
     if (enabled) Contacts().Clear(step);
     Contact discarded[256]; Touches().Drain(discarded);
     enabled = false;
@@ -189,25 +189,25 @@ void CSnowRenderer::CopyGround()
 {
     auto* target=RImplementation.Target;
     const int bank=Device.m_SecondViewport.IsSVPFrame()?1:0;
-    const ref_rt source[2]={target->rt_Position,RImplementation.o.albedo_wo?target->rt_Accumulator:target->rt_Color};
-    ref_rt* copies[2]={&basePosition[bank],&baseColor[bank]};
+    const ref_rt& source=target->rt_Position;
+    ref_rt& copy=basePosition[bank];
     if(!positionTexture) positionTexture.create("$user$snow_base_position");
-    if(!colorTexture) colorTexture.create("$user$snow_base_color");
     RCache.set_Textures(nullptr);
-    positionTexture->surface_set(nullptr);colorTexture->surface_set(nullptr);
-    for(unsigned i=0;i<2;++i)
+    if(copy && (copy->dwWidth!=source->dwWidth || copy->dwHeight!=source->dwHeight ||
+        copy->fmt!=source->fmt || copy->sampleCount!=source->sampleCount))
     {
-        ref_rt& copy=*copies[i];
-        if(copy && (copy->dwWidth!=source[i]->dwWidth || copy->dwHeight!=source[i]->dwHeight ||
-            copy->fmt!=source[i]->fmt || copy->sampleCount!=source[i]->sampleCount)) copy.destroy();
-        if(!copy)
-        {
-            string64 name;xr_sprintf(name,"$user$snow_copy_%d_%u",bank,i);
-            copy.create(name,source[i]->dwWidth,source[i]->dwHeight,source[i]->fmt,source[i]->sampleCount);
-        }
-        HW.pContext->CopyResource(copy->pSurface,source[i]->pSurface);
+        positionTexture->surface_set(nullptr);
+        boundPositionBank=-1;
+        copy.destroy();
     }
-    positionTexture->surface_set(basePosition[bank]->pSurface);colorTexture->surface_set(baseColor[bank]->pSurface);
+    if(!copy)
+    {
+        string64 name;xr_sprintf(name,"$user$snow_copy_%d_0",bank);
+        copy.create(name,source->dwWidth,source->dwHeight,source->fmt,source->sampleCount);
+    }
+    HW.pContext->CopyResource(copy->pSurface,source->pSurface);
+    // Reuse the SRV while the active camera bank is unchanged.
+    if(boundPositionBank!=bank) { positionTexture->surface_set(copy->pSurface);boundPositionBank=bank; }
 }
 
 void CSnowRenderer::CreateGeometry()
@@ -261,6 +261,7 @@ void CSnowRenderer::Render()
     HW.pContext->Unmap(indexBuffer,0);
     RCache.set_xform_world(Fidentity);RCache.set_Shader(shader);RCache.set_Geometry(geometry);
     RCache.set_CullMode(CULL_NONE);
+    RCache.set_Stencil(TRUE,D3DCMP_ALWAYS,0x01,0xff,0x7f,D3DSTENCILOP_KEEP,D3DSTENCILOP_REPLACE,D3DSTENCILOP_KEEP);
     static shared_str field("anthology_snow_field");
     RCache.set_c(field,Get(Height),Get(Density),Get(Variation),Get(DriftSize));
     const PipMotionHistoryScope history(nullptr,true);

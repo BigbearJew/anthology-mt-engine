@@ -3,10 +3,8 @@
 #include "anthology_snow_field.h"
 #ifdef USE_MSAA
 Texture2DMS<float4, MSAA_SAMPLES> snow_base_position;
-Texture2DMS<float4, MSAA_SAMPLES> snow_base_color;
 #else
 Texture2D<float4> snow_base_position;
-Texture2D<float4> snow_base_color;
 #endif
 struct snow_output {
     float4 hpos:SV_Position;
@@ -19,6 +17,9 @@ struct snow_output {
 };
 f_deffer main(snow_output I)
 {
+    // Density controls geometry coverage, never the opacity of a snowdrift.
+    // In empty patches keep the original ground and its depth untouched.
+    clip(I.cover - (0.001 / 0.035));
     float3 N=normalize(I.normal);
     if(N.y<0) N=-N;
     // Fine detail fades before becoming subpixel noise in the distance.
@@ -29,13 +30,10 @@ f_deffer main(snow_output I)
     float3 viewN=mul((float3x3)m_V,N);
 #ifdef USE_MSAA
     float4 ground=snow_base_position.Load(int2(I.hpos.xy),0);
-    float4 color=snow_base_color.Load(int2(I.hpos.xy),0);
 #else
     float4 ground=snow_base_position.Load(int3(I.hpos.xy,0));
-    float4 color=snow_base_color.Load(int3(I.hpos.xy,0));
 #endif
     float3 albedo=(.65+.10*broad+grain*.04*detail)*float3(.94,.97,1);
-    albedo=lerp(color.rgb,albedo,smoothstep(0,1,I.cover));
     f_deffer O=pack_gbuffer(float4(viewN,gbuf_unpack_hemi(ground.w)),float4(I.view,.95),float4(albedo,.035));
     O.velocity=ssfx_mv_calc(I.current,I.previous,0,0);
     return O;

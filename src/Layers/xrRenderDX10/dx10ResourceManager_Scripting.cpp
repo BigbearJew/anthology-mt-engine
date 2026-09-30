@@ -145,7 +145,8 @@ public:
 #if defined(USE_DX11)
 		// SSS detail grass is compiled by Lua and does not pass through uber_deffer.
 		string512 green = {}, autumn = {}, dead = {};
-		const bool seasonalGrass = xr_strcmp(ps, "deffer_grass") == 0 && !C->L_textures.empty() &&
+		const bool seasonalGrass = xr_strcmp(ps, "deffer_grass") == 0 && !C->L_textures.empty();
+		if (seasonalGrass)
 			anthology_prepare_flora_textures(C->L_textures[0].c_str(), green, autumn, dead);
 		if (seasonalGrass)
 			ps = "deffer_anthology_ssfx_grass";
