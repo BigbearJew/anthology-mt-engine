@@ -298,10 +298,10 @@ void CBlender_BmmD::Compile(CBlender_Compile& C)
 		}
 
 #if RENDER == R_R4
-		if (RImplementation.o.ssfx_terrain && !hasSeasonalTerrain)
+		if (RImplementation.o.ssfx_terrain)
 		{
 			C.SH->flags.isLandscape = TRUE;
-			uber_deffer(C, true, "terrain", "terrain_high", false, oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
+			uber_deffer(C, true, hasSeasonalTerrain ? "impl" : "terrain", hasSeasonalTerrain ? "anthology_terrain_high" : "terrain_high", false, oT2_Name[0] ? oT2_Name : 0, true, z_prepass);
 		}
 		else
 #endif

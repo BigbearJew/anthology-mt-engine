@@ -1,3 +1,8 @@
+// DX11 seasonal terrain must use the SSS height pipeline, including MCM.
+#ifdef SM_5
+#define ANTHOLOGY_SEASONAL_TERRAIN
+#include "deffer_terrain_high_flat_d.ps"
+#else
 #ifndef ANTHOLOGY_FLORA_STYLE_DECLARED
 #define ANTHOLOGY_FLORA_STYLE_DECLARED
 uniform float4 anthology_flora_style;
@@ -126,10 +131,30 @@ f_deffer main(p_bumped I)
     // original SoC Update high pass. The compact LOD atlas belongs only to the
     // mid/low passes; sampling it here multiplied the already-dark atlas into
     // the level base map and made Dead Autumn terrain look almost black.
-    float3 dR = (useWinter ? s_dt_r_winter.Sample(smp_base, I.tcdbump) : useDead ? s_dt_r_dead.Sample(smp_base, I.tcdbump) : s_dt_r.Sample(smp_base, I.tcdbump)).rgb * mask.r;
-    float3 dG = (useWinter ? s_dt_g_winter.Sample(smp_base, I.tcdbump) : useDead ? s_dt_g_dead.Sample(smp_base, I.tcdbump) : s_dt_g.Sample(smp_base, I.tcdbump)).rgb * mask.g;
-    float3 dB = (useWinter ? s_dt_b_winter.Sample(smp_base, I.tcdbump) : useDead ? s_dt_b_dead.Sample(smp_base, I.tcdbump) : s_dt_b.Sample(smp_base, I.tcdbump)).rgb * mask.b;
-    float3 dA = (useWinter ? s_dt_a_winter.Sample(smp_base, I.tcdbump) : useDead ? s_dt_a_dead.Sample(smp_base, I.tcdbump) : s_dt_a.Sample(smp_base, I.tcdbump)).rgb * mask.a;
+    // Season is uniform for the draw. Branch before sampling so inactive
+    // texture sets consume no texture reads in summer or autumn.
+    float3 dR, dG, dB, dA;
+    [branch] if (useWinter)
+    {
+        dR = s_dt_r_winter.Sample(smp_base, I.tcdbump).rgb * mask.r;
+        dG = s_dt_g_winter.Sample(smp_base, I.tcdbump).rgb * mask.g;
+        dB = s_dt_b_winter.Sample(smp_base, I.tcdbump).rgb * mask.b;
+        dA = s_dt_a_winter.Sample(smp_base, I.tcdbump).rgb * mask.a;
+    }
+    else [branch] if (useDead)
+    {
+        dR = s_dt_r_dead.Sample(smp_base, I.tcdbump).rgb * mask.r;
+        dG = s_dt_g_dead.Sample(smp_base, I.tcdbump).rgb * mask.g;
+        dB = s_dt_b_dead.Sample(smp_base, I.tcdbump).rgb * mask.b;
+        dA = s_dt_a_dead.Sample(smp_base, I.tcdbump).rgb * mask.a;
+    }
+    else
+    {
+        dR = s_dt_r.Sample(smp_base, I.tcdbump).rgb * mask.r;
+        dG = s_dt_g.Sample(smp_base, I.tcdbump).rgb * mask.g;
+        dB = s_dt_b.Sample(smp_base, I.tcdbump).rgb * mask.b;
+        dA = s_dt_a.Sample(smp_base, I.tcdbump).rgb * mask.a;
+    }
     // SoC Update stabilizes the asphalt channel before detail multiplication.
     // Without it the already-dark level base and the dark authored layer are
     // multiplied together and turn the terrain mask into near-black spots.
@@ -184,3 +209,5 @@ f_deffer main(p_bumped I)
     result.velocity = ssfx_mv_calc(I.vel_curr, I.vel_prev, 0, 0);
     return result;
 }
+
+#endif

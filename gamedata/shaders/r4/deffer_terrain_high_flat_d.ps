@@ -32,6 +32,12 @@ uniform float4 anthology_flora_style;
     Texture2D s_rainsplash;
 #endif
 
+// Seasonal colour layers share the same SSS height/normal material pipeline.
+#ifdef ANTHOLOGY_SEASONAL_TERRAIN
+Texture2D s_dt_r_dead, s_dt_g_dead, s_dt_b_dead, s_dt_a_dead;
+Texture2D s_dt_r_winter, s_dt_g_winter, s_dt_b_winter, s_dt_a_winter;
+#endif
+
 // Height Textures
 Texture2D s_height_r;
 Texture2D s_height_g;
@@ -113,7 +119,7 @@ void TerrainParallax(float2 tc_step, float _step, inout surface S, inout p_bumpe
     if (S.mask <= 0)
         return;
 
-    if (p.position.z >= ssfx_terrain_pom.y)
+    if (p.position.z >= ssfx_terrain_pom.y || ssfx_terrain_pom.z <= 0 || ssfx_terrain_pom.x <= 0)
         return;
 
     // Init vars to store steps
@@ -147,7 +153,7 @@ void TerrainParallax(float2 tc_step, float _step, inout surface S, inout p_bumpe
 
     } while(curr_Height > curr_step);
 
-#ifdef SSFX_TERRA_POM_REFINE
+#if defined(SSFX_TERRA_POM_REFINE) && SSFX_TERRA_POM_REFINE != 0
 
         // Step back
         parallax_tc += tc_step;
@@ -185,7 +191,8 @@ void TerrainParallax(float2 tc_step, float _step, inout surface S, inout p_bumpe
 
     // [ POM ] Interpolation between the previous offset and the current offset
     float currentDiff = curr_Height - curr_step;
-    float ratio = currentDiff / (currentDiff - saturate(prev_Height - curr_step + _step));
+    float denom = currentDiff - saturate(prev_Height - curr_step + _step);
+    float ratio = abs(denom) > 0.000001f ? saturate(currentDiff / denom) : 0.0f;
 
     // Final TexCoor
     S.tc = lerp(parallax_tc, parallax_tc + tc_step, ratio);
@@ -214,13 +221,11 @@ void TerrainTextures(inout surface S, Texture2D s_base_det, Texture2D s_bump_det
 #include "anthology_snow_ground.h"
 f_deffer main(p_bumped I)
 {
-    [branch] if (abs(anthology_flora_style.x - 4.0) < 0.1)
-    {
-        f_deffer snow = anthology_snow_ground(I.position.xyz, float3(I.M1.z, I.M2.z, I.M3.z), s_base.Sample(smp_base, I.tcdh));
-        snow.velocity = ssfx_mv_calc(I.vel_curr, I.vel_prev, 0, 0);
-        return snow;
-    }
-
+    const bool isWinter = abs(anthology_flora_style.x - 4.0) < 0.1;
+#ifdef ANTHOLOGY_SEASONAL_TERRAIN
+    const bool useDead = abs(anthology_flora_style.x - 3.0) < 0.1;
+    const bool useWinter = anthology_flora_style.x >= 3.5 && anthology_flora_style.x < 5.5;
+#endif
 
 // General --------------------------------------------------------
 
@@ -236,7 +241,8 @@ f_deffer main(p_bumped I)
 
     // Splatting Mask
     float4 mask = s_mask.Sample(smp_base, I.tcdh.xy);
-    mask /= dot(mask, 1.0);
+    float maskSum = dot(mask, 1.0);
+    mask = maskSum > 0.0001 ? mask / maskSum : float4(1, 0, 0, 0);
 
 // Init Surfaces --------------------------------------------------
 
@@ -258,7 +264,9 @@ f_deffer main(p_bumped I)
 // Parallax -------------------------------------------------------
 
     // Distance attenuation
-    float dist_att = 1.0 - smoothstep(TERRAIN_POM_RANGE * 0.8f, TERRAIN_POM_RANGE, I.position.z);
+    float pomRange = max(ssfx_terrain_pom.y, 0.001f);
+    float dist_att = 1.0 - smoothstep(pomRange * 0.8f, pomRange, I.position.z);
+    dist_att *= (ssfx_terrain_pom.x > 0 && ssfx_terrain_pom.y > 0 && ssfx_terrain_pom.z > 0) ? 1.0f : 0.0f;
 
     float3 eye = normalize(mul(float3x3(I.M1.x, I.M2.x, I.M3.x,
         I.M1.y, I.M2.y, I.M3.y,
@@ -267,7 +275,7 @@ f_deffer main(p_bumped I)
     float view_angle = abs(dot(float3(0.0, 0.0, 1.0), eye));
 
     // Dynamic steps
-    float _step = rcp(lerp(ssfx_terrain_pom.x, TERRAIN_POM_STEPS_MIN, view_angle)); // 1.0 / Step Qty
+    float _step = rcp(lerp(clamp(ssfx_terrain_pom.x, 1.0f, 36.0f), max(1.0f, TERRAIN_POM_STEPS_MIN), view_angle)); // 1.0 / Step Qty
     _step *= TERRAIN_POM_PLANE; // We are working with 0.0 ~ 0.5
 
     // View direction + bias to try to minimize issues with some slopes.
@@ -297,11 +305,18 @@ f_deffer main(p_bumped I)
 
     // Wetness factor
     float wetness_f = saturate(rain_params.y) * ssfx_terrain_pom.w;
+#ifdef ANTHOLOGY_SEASONAL_TERRAIN
+    // Keep the authored wet autumns, but let the MCM water control turn them off.
+    if (useDead || abs(anthology_flora_style.x - 5.0) < 0.1)
+        wetness_f = ssfx_terrain_pom.w;
+#endif
 
     // Always render puddles if G_PUDDLES_ALLWAYS is defined
     #ifdef G_PUDDLES_ALLWAYS
-        wetness_f = 1.0f;
+        wetness_f = ssfx_terrain_pom.w;
     #endif
+
+    if (isWinter) wetness_f = 0.0f;
 
     float height_str = saturate(wetness_f * TERRAIN_POM_PLANE - PixelHeight);
     float puddles = saturate(height_str * 4.0f);
@@ -367,10 +382,31 @@ f_deffer main(p_bumped I)
 // Textures -------------------------------------------------------
 
     // Sample color and bump textures with new parallax TexCoors and refraction displacement
+#ifdef ANTHOLOGY_SEASONAL_TERRAIN
+    // Uniform branches avoid sampling the inactive seasonal texture sets.
+    [branch] if (useWinter)
+    {
+        TerrainTextures(Sr, s_dt_r_winter, s_dn_r, N_refra);
+        TerrainTextures(Sg, s_dt_g_winter, s_dn_g, N_refra);
+        TerrainTextures(Sb, s_dt_b_winter, s_dn_b, N_refra);
+        TerrainTextures(Sa, s_dt_a_winter, s_dn_a, N_refra);
+    }
+    else [branch] if (useDead)
+    {
+        TerrainTextures(Sr, s_dt_r_dead, s_dn_r, N_refra);
+        TerrainTextures(Sg, s_dt_g_dead, s_dn_g, N_refra);
+        TerrainTextures(Sb, s_dt_b_dead, s_dn_b, N_refra);
+        TerrainTextures(Sa, s_dt_a_dead, s_dn_a, N_refra);
+        C.rgb = lerp(C.rgb, float3(0.25, 0.25, 0.25), mask.g);
+    }
+    else
+#endif
+    {
     TerrainTextures(Sr, s_dt_r, s_dn_r, N_refra);
     TerrainTextures(Sg, s_dt_g, s_dn_g, N_refra);
     TerrainTextures(Sb, s_dt_b, s_dn_b, N_refra);
     TerrainTextures(Sa, s_dt_a, s_dn_a, N_refra);
+    }
 
     // Apply splatting mask to everything ( Color, Normal and Gloss )
     ApplyWeights(Sr, Sg, Sb, Sa, mask);
@@ -407,7 +443,14 @@ f_deffer main(p_bumped I)
     float d1 = dot(Nw, Nw * (1.0 - PixelHeight * 1.5) * -0.11f); // Exaggerate shadows? ( 1.5f )
     float d2 = dot(eyeVec, Nw);
 
-    float3 offset_pos = I.position.xyz + eyeVec * (d1 / min(d2, -0.3f)); // Limit `d2` to -0.3 to avoid problems with some slopes
+    // The depth contribution must disappear with the same height/range controls
+    // as the UV displacement, instead of leaving a permanent sunken surface.
+    float depthScale = (ssfx_terrain_pom.z / 0.04f) * dist_att;
+    float3 offset_pos = I.position.xyz + eyeVec * (d1 / min(d2, -0.3f)) * depthScale; // Limit `d2` to -0.3 to avoid problems with some slopes
+
+    // Snow colour stays seasonal; the ground underneath still has SSS relief.
+    if (isWinter)
+        anthology_snow_surface(offset_pos, Nw, Ne, C.rgb, G);
 
 // Send Pack ------------------------------------------------------
 
