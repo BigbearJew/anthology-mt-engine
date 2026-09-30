@@ -231,11 +231,23 @@ void CRenderTarget::phase_ssfx_ao()
 
 	// Draw COLOR
 	RCache.set_Element(s_ssfx_ao->E[1]);
+	static shared_str guidedFilter("ao_guided_filter");
+	const bool guidedAO = RCache.get_c(guidedFilter) != nullptr;
+	if(guidedAO) RCache.set_c(guidedFilter,1.f,0.f,0.f,0.f);
 	RCache.set_c("blur_setup", ps_ssfx_ao.x, 0.25f, scale_X, scale_Y);
 	RCache.set_c("ao_setup", ps_ssfx_ao);
 	RCache.set_Geometry(g_combine);
 	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 
+
+	// The new 7x7 depth guide is complete in one pass. The original shader still
+	// uses its four-pass filter; do not run the new 49-tap filter four times.
+	if(guidedAO)
+	{
+		RCache.set_Textures(nullptr);
+		HW.pContext->CopyResource(rt_ssfx_temp->pSurface,rt_ssfx_temp3->pSurface);
+		return;
+	}
 
 	// BLUR PHASE 2 //////////////////////////////////////////////////////////
 	u_setrt(rt_ssfx_temp, 0, 0, 0);

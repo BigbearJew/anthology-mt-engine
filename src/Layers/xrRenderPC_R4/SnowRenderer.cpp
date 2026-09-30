@@ -13,9 +13,10 @@ void CSnowRenderer::Clear()
     geometry.destroy();
     if(vertexBuffer) { HW.stats_manager.decrement_stats_vb(vertexBuffer);_RELEASE(vertexBuffer); }
     if(indexBuffer) { HW.stats_manager.decrement_stats_ib(indexBuffer);_RELEASE(indexBuffer); }
-    if(positionTexture) positionTexture->surface_set(nullptr);
-    boundPositionBank=-1;
-    for(int bank=0;bank<2;++bank) basePosition[bank].destroy();
+    if(trackTexture) trackTexture->surface_set(nullptr);
+    _RELEASE(trackSurface);
+    tracks.clear(); tracksDirty=false; meshDirty=true; settleHistory=false;
+    uploadedRevision=u32(-1); uploadedBank=-1;
     if (enabled) Contacts().Clear(step);
     Contact discarded[256]; Touches().Drain(discarded);
     enabled = false;
@@ -34,11 +35,20 @@ void CSnowRenderer::Probe(int x, int z, float cameraY)
     for(int dz=-2;dz<=2;++dz) for(int dx=-2;dx<=2;++dx) Cell(x+dx,z+dz).edgeDirty=true;
     collide::rq_result result;
     Fvector from={x*step,cameraY+3.f,z*step}, down={0,-1,0};
-    if (!level->ObjectSpace.RayPick(from,down,80.f,collide::rqtStatic,result,nullptr)) return;
-    const CDB::TRI& triangle=level->ObjectSpace.GetStaticTris()[result.element];
-    if (triangle.material>=GMLib.CountMaterial()) return;
-    const SGameMtl* material=GMLib.GetMaterialByIdx(triangle.material);
-    if (material->Flags.test(SGameMtl::flPassable)) return;
+    // Passable leaves/grass are not the ground. Continue through them, bounded.
+    const CDB::TRI* hit=nullptr;
+    const SGameMtl* material=nullptr;
+    for(unsigned layer=0;layer<16;++layer)
+    {
+        if (!level->ObjectSpace.RayPick(from,down,80.f,collide::rqtStatic,result,nullptr)) return;
+        hit=&level->ObjectSpace.GetStaticTris()[result.element];
+        if(hit->material>=GMLib.CountMaterial()) return;
+        material=GMLib.GetMaterialByIdx(hit->material);
+        if(!material->Flags.test(SGameMtl::flPassable)) break;
+        from.y-=result.range+.02f; material=nullptr;
+    }
+    if(!material) return;
+    const CDB::TRI& triangle=*hit;
     const char* name=material->m_Name.c_str();
     // Water/ice and vertical scenery retain their own seasonal material.
     if (strstr(name,"water") || strstr(name,"ice") || strstr(name,"metal") ||
@@ -66,7 +76,7 @@ void CSnowRenderer::Update()
     updateTime=Device.dwFrame;
     const float desiredDistance=Get(Distance);
     Fvector4 requested;requested.set(Get(Height),Get(Density),Get(Variation),Get(DriftSize));
-    if(memcmp(&requested,&parameters,sizeof(parameters))) { parameters=requested; ++fieldRevision; }
+    if(memcmp(&requested,&parameters,sizeof(parameters))) { parameters=requested; ++fieldRevision; meshDirty=true; }
     if (level!=g_pGameLevel || distance!=desiredDistance || samples.empty())
     {
         Clear(); enabled=true; level=g_pGameLevel; distance=desiredDistance;
@@ -83,7 +93,9 @@ void CSnowRenderer::Update()
     }
     const int x=int(std::floor(Device.vCameraPosition.x/step)), z=int(std::floor(Device.vCameraPosition.z/step));
     if (abs(x-centerX)>radius || abs(z-centerZ)>radius) probe=0;
+    if(x!=centerX || z!=centerZ) meshDirty=true;
     centerX=x; centerZ=z;
+    UpdateTracks();
     if (probe>=offsets.size()) probe=0;
     // At most 64 new cells and 0.4 ms of collision work per main frame.
     const u64 began=CPU::QPC(); unsigned queries=0, visited=0;
@@ -94,13 +106,16 @@ void CSnowRenderer::Update()
         const int cx=centerX+int(offset.x), cz=centerZ+int(offset.y);
         Sample& cell=Cell(cx,cz);
         if (cell.known && cell.x==cx && cell.z==cz && abs(cell.probeHeight-Device.vCameraPosition.y)<2.f) continue;
-        Probe(cx,cz,Device.vCameraPosition.y); ++queries;
+        Probe(cx,cz,Device.vCameraPosition.y); ++queries; meshDirty=true;
     }
     Contact contacts[256];
     const unsigned count=Touches().Drain(contacts);
     for (unsigned i=0;i<count;++i)
     {
         const Contact& contact=contacts[i];
+        if(abs(contact.x-trackX*TrackStep)>TrackSide*TrackStep*.5f ||
+            abs(contact.z-trackZ*TrackStep)>TrackSide*TrackStep*.5f) continue;
+        StampTrack(contact.x,contact.y,contact.z,contact.radius,contact.forwardX,contact.forwardZ,contact.bullet);
         const int cx=int(std::floor(contact.x/step)),cz=int(std::floor(contact.z/step));
         const int reach=std::min(4,int(std::ceil(contact.radius/step))+1);
         for (int dz=-reach;dz<=reach;++dz) for (int dx=-reach;dx<=reach;++dx)
@@ -110,10 +125,18 @@ void CSnowRenderer::Update()
                 contact.y<cell.y-.15f || contact.y>cell.y+.45f) continue;
             const float sx=cell.x*step-contact.x, sz=cell.z*step-contact.z;
             const float strength=Smooth(1.f-std::sqrt(sx*sx+sz*sz)/(contact.radius+step*.5f));
-            cell.remaining=std::min(cell.remaining,1.f-.85f*strength);
+            // Fine sole/crater shading is independent of coarse grid spacing.
+            const float remaining=std::min(cell.remaining,1.f-.30f*strength);
+            if(remaining!=cell.remaining) { cell.remaining=remaining; meshDirty=true; }
         }
     }
-    Rebuild();
+    // Rebuild only on changed geometry; one settling update clears deformation MV.
+    if(meshDirty || settleHistory)
+    {
+        const bool changed=meshDirty;
+        Rebuild(); ++meshRevision;
+        meshDirty=false; settleHistory=changed;
+    }
 }
 
 bool CSnowRenderer::Valid(int x,int z,float ground)
@@ -133,7 +156,7 @@ void CSnowRenderer::Rebuild()
         Vertex& vertex=vertices[z*side+x];
         vertex.p.set(cx*step,cell.y,cz*step);vertex.n.set(0,1,0);vertex.data.set(0,cell.y,0,0);
         if (!cell.known || !cell.valid || cell.x!=cx || cell.z!=cz) continue;
-        const float dx=cx*step-Device.vCameraPosition.x,dz=cz*step-Device.vCameraPosition.z;
+        const float dx=(cx-centerX)*step,dz=(cz-centerZ)*step;
         const float fade=Smooth((distance-std::sqrt(dx*dx+dz*dz))/std::max(2.f,distance*.15f));
         const float slope=Smooth((cell.normal.y-.45f)/.35f);
         if(cell.edgeDirty)
@@ -185,29 +208,73 @@ void CSnowRenderer::Rebuild()
     }
 }
 
-void CSnowRenderer::CopyGround()
+void CSnowRenderer::UpdateTracks()
 {
-    auto* target=RImplementation.Target;
-    const int bank=Device.m_SecondViewport.IsSVPFrame()?1:0;
-    const ref_rt& source=target->rt_Position;
-    ref_rt& copy=basePosition[bank];
-    if(!positionTexture) positionTexture.create("$user$snow_base_position");
+    const int x=int(std::floor(Device.vCameraPosition.x/(TrackStep*8)))*8;
+    const int z=int(std::floor(Device.vCameraPosition.z/(TrackStep*8)))*8;
+    if(tracks.empty())
+    {
+        tracks.resize(TrackSide*TrackSide); trackX=x; trackZ=z; tracksDirty=true;
+    }
+    if(x==trackX && z==trackZ) return;
+    // Only clear newly exposed strips in the toroidal world-aligned field.
+    if(abs(x-trackX)>=TrackSide || abs(z-trackZ)>=TrackSide)
+        std::fill(tracks.begin(),tracks.end(),TrackPixel{});
+    else
+    {
+        const int xbegin=x>trackX?trackX+256:x-256, xend=x>trackX?x+256:trackX-256;
+        const int zbegin=z>trackZ?trackZ+256:z-256, zend=z>trackZ?z+256:trackZ-256;
+        for(int iz=z-256;iz<z+256;++iz) for(int ix=xbegin;ix<xend;++ix)
+            tracks[(unsigned(ix)&511)+(unsigned(iz)&511)*TrackSide]={};
+        for(int iz=zbegin;iz<zend;++iz) for(int ix=x-256;ix<x+256;++ix)
+            tracks[(unsigned(ix)&511)+(unsigned(iz)&511)*TrackSide]={};
+    }
+    trackX=x; trackZ=z; tracksDirty=true;
+}
+
+void CSnowRenderer::StampTrack(float x,float y,float z,float radius,float fx,float fz,bool bullet)
+{
+    if(tracks.empty() || Contacts().At(x,y,z)<=.002f) return;
+    const float length=std::sqrt(fx*fx+fz*fz);
+    if(length>.001f) { fx/=length;fz/=length; } else { fx=0.f;fz=1.f; }
+    const int cx=int(std::floor(x/TrackStep)),cz=int(std::floor(z/TrackStep));
+    const int reach=int(std::ceil(radius/TrackStep))+1;
+    for(int iz=cz-reach;iz<=cz+reach;++iz) for(int ix=cx-reach;ix<=cx+reach;++ix)
+    {
+        if(ix<trackX-256 || ix>=trackX+256 || iz<trackZ-256 || iz>=trackZ+256) continue;
+        const float dx=(ix+.5f)*TrackStep-x,dz=(iz+.5f)*TrackStep-z;
+        const float along=dx*fx+dz*fz,across=dx*fz-dz*fx;
+        const float toe=(along-.045f)/.13f,heel=(along+.105f)/.07f;
+        const float r=(bullet || radius>.2f) ? std::sqrt(dx*dx+dz*dz)/radius :
+            std::min(std::sqrt(toe*toe+across*across/(.08f*.08f)),
+                std::sqrt(heel*heel+across*across/(.062f*.062f)));
+        const float strength=Smooth((1.f-r)*3.f)*(bullet?.9f:.7f);
+        TrackPixel& pixel=tracks[(unsigned(ix)&511)+(unsigned(iz)&511)*TrackSide];
+        if(strength>pixel.depth)
+        {
+            pixel.depth=strength; pixel.ground=y*strength; tracksDirty=true;
+        }
+    }
+    if(strstr(Core.Params,"-snow_profile")) Msg("[snow-contact] %s %.3f %.3f %.3f",bullet?"bullet":(radius>.2f?"body":"foot"),x,y,z);
+}
+
+void CSnowRenderer::UploadTracks()
+{
+    if(!trackSurface)
+    {
+        D3D11_TEXTURE2D_DESC desc={};desc.Width=desc.Height=TrackSide;desc.MipLevels=desc.ArraySize=1;
+        desc.Format=DXGI_FORMAT_R32G32_FLOAT;desc.SampleDesc.Count=1;
+        desc.Usage=D3D11_USAGE_DYNAMIC;desc.BindFlags=D3D11_BIND_SHADER_RESOURCE;desc.CPUAccessFlags=D3D11_CPU_ACCESS_WRITE;
+        R_CHK(HW.pDevice->CreateTexture2D(&desc,nullptr,&trackSurface));
+        trackTexture.create("$user$snow_tracks");trackTexture->surface_set(trackSurface);tracksDirty=true;
+    }
+    if(!tracksDirty) return;
     RCache.set_Textures(nullptr);
-    if(copy && (copy->dwWidth!=source->dwWidth || copy->dwHeight!=source->dwHeight ||
-        copy->fmt!=source->fmt || copy->sampleCount!=source->sampleCount))
-    {
-        positionTexture->surface_set(nullptr);
-        boundPositionBank=-1;
-        copy.destroy();
-    }
-    if(!copy)
-    {
-        string64 name;xr_sprintf(name,"$user$snow_copy_%d_0",bank);
-        copy.create(name,source->dwWidth,source->dwHeight,source->fmt,source->sampleCount);
-    }
-    HW.pContext->CopyResource(copy->pSurface,source->pSurface);
-    // Reuse the SRV while the active camera bank is unchanged.
-    if(boundPositionBank!=bank) { positionTexture->surface_set(copy->pSurface);boundPositionBank=bank; }
+    D3D11_MAPPED_SUBRESOURCE mapped={};
+    R_CHK(HW.pContext->Map(trackSurface,0,D3D11_MAP_WRITE_DISCARD,0,&mapped));
+    for(unsigned y=0;y<TrackSide;++y)
+        CopyMemory(static_cast<BYTE*>(mapped.pData)+y*mapped.RowPitch,tracks.data()+y*TrackSide,TrackSide*sizeof(TrackPixel));
+    HW.pContext->Unmap(trackSurface,0);tracksDirty=false;
 }
 
 void CSnowRenderer::CreateGeometry()
@@ -233,12 +300,15 @@ void CSnowRenderer::Render()
     }
     if (!Device.m_SecondViewport.IsSVPFrame()) Update();
     if (indices.empty()) return;
-    CopyGround();
+    UploadTracks();
     if (!shader)
     {
         shader.create("anthology_snow_volume");
     }
     if(!geometry) CreateGeometry();
+    const int bank=Device.m_SecondViewport.IsSVPFrame()?1:0;
+    if(uploadedRevision!=meshRevision || uploadedBank!=bank || settleHistory)
+    {
     D3D11_MAPPED_SUBRESOURCE mapped={};
     R_CHK(HW.pContext->Map(vertexBuffer,0,D3D11_MAP_WRITE_DISCARD,0,&mapped));
     void* data=mapped.pData;
@@ -259,11 +329,14 @@ void CSnowRenderer::Render()
     R_CHK(HW.pContext->Map(indexBuffer,0,D3D11_MAP_WRITE_DISCARD,0,&mapped));
     CopyMemory(mapped.pData,indices.data(),indices.size()*sizeof(u16));
     HW.pContext->Unmap(indexBuffer,0);
+    uploadedRevision=meshRevision;uploadedBank=bank;
+    }
     RCache.set_xform_world(Fidentity);RCache.set_Shader(shader);RCache.set_Geometry(geometry);
     RCache.set_CullMode(CULL_NONE);
     RCache.set_Stencil(TRUE,D3DCMP_ALWAYS,0x01,0xff,0x7f,D3DSTENCILOP_KEEP,D3DSTENCILOP_REPLACE,D3DSTENCILOP_KEEP);
     static shared_str field("anthology_snow_field");
     RCache.set_c(field,Get(Height),Get(Density),Get(Variation),Get(DriftSize));
+    RCache.set_c("snow_track_field",trackX*TrackStep,trackZ*TrackStep,1.f/(TrackStep*TrackSide),TrackStep);
     const PipMotionHistoryScope history(nullptr,true);
     RCache.Render(D3DPT_TRIANGLELIST,0,0,u32(vertices.size()),0,u32(indices.size()/3));
     RCache.set_CullMode(CULL_CCW);

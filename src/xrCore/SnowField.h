@@ -141,17 +141,17 @@ public:
 };
 inline ContactCache& Contacts() { static ContactCache cache; return cache; }
 
-struct Contact { float x, y, z, radius; };
+struct Contact { float x, y, z, radius, forwardX, forwardZ; bool bullet; };
 class ContactQueue
 {
     std::mutex mutex;
     Contact entries[256];
     unsigned count = 0;
 public:
-    void Push(float x, float y, float z, float radius)
+    void Push(float x, float y, float z, float radius, float forwardX=0.f, float forwardZ=1.f, bool bullet=false)
     {
         std::lock_guard<std::mutex> guard(mutex);
-        if (count < 256) entries[count++] = {x, y, z, radius};
+        if (count < 256) entries[count++] = {x, y, z, radius, forwardX, forwardZ, bullet};
     }
     unsigned Drain(Contact* output)
     {
@@ -168,7 +168,16 @@ inline float Movement(float x, float y, float z)
     if (!Active()) return 1.f;
     const float depth = Contacts().At(x,y,z);
     if (depth <= .002f) return 1.f;
-    Touches().Push(x,y,z,.32f);
     return SpeedFactor(depth, Get(Resistance));
+}
+inline void Footstep(float x, float y, float z, float forwardX, float forwardZ)
+{
+    if (Active() && Contacts().At(x,y,z) > .002f)
+        Touches().Push(x,y,z,.18f,forwardX,forwardZ);
+}
+inline void Impact(float x, float y, float z)
+{
+    if (Active() && Contacts().At(x,y,z) > .002f)
+        Touches().Push(x,y,z,.12f,0.f,1.f,true);
 }
 } }

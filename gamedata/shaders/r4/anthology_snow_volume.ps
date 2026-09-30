@@ -1,11 +1,12 @@
 #include "common.h"
 #include "screenspace_mvectors.h"
 #include "anthology_snow_field.h"
-#ifdef USE_MSAA
-Texture2DMS<float4, MSAA_SAMPLES> snow_base_position;
-#else
-Texture2D<float4> snow_base_position;
-#endif
+Texture2D<float2> snow_tracks;
+float4 snow_track_field; // centre xz, reciprocal width, texel size in metres
+float snow_track(float2 world)
+{
+    return snow_tracks.SampleLevel(smp_base, world*snow_track_field.z, 0).r;
+}
 struct snow_output {
     float4 hpos:SV_Position;
     float3 world:TEXCOORD0;
@@ -27,14 +28,19 @@ f_deffer main(snow_output I)
     float detail=1-smoothstep(.008,.04,footprint);
     float grain=snow_field_noise(I.world.xz*83.0)-.5;
     float broad=snow_field_noise(I.world.xz*.55);
+    float2 track=snow_tracks.SampleLevel(smp_base,I.world.xz*snow_track_field.z,0);
+    float valid=all(abs(I.world.xz-snow_track_field.xy)<(0.49/snow_track_field.z)) &&
+        track.r>.001 && abs(I.world.y-track.g/max(track.r,.001))<1.3;
+    float2 e=float2(snow_track_field.w,0);
+    float2 gradient=float2(snow_track(I.world.xz+e)-snow_track(I.world.xz-e),
+        snow_track(I.world.xz+e.yx)-snow_track(I.world.xz-e.yx));
+    N=normalize(N+float3(gradient.x,0,gradient.y)*(.025/(2*snow_track_field.w))*valid);
     float3 viewN=mul((float3x3)m_V,N);
-#ifdef USE_MSAA
-    float4 ground=snow_base_position.Load(int2(I.hpos.xy),0);
-#else
-    float4 ground=snow_base_position.Load(int3(I.hpos.xy,0));
-#endif
     float3 albedo=(.65+.10*broad+grain*.04*detail)*float3(.94,.97,1);
-    f_deffer O=pack_gbuffer(float4(viewN,gbuf_unpack_hemi(ground.w)),float4(I.view,.95),float4(albedo,.035));
+    albedo*=1-.06*track.r*valid;
+    // Snow is its own opaque surface. Screen-space ground samples also contain
+    // foreground props; inheriting their lighting imprinted their silhouettes.
+    f_deffer O=pack_gbuffer(float4(viewN,.7),float4(I.view,.95),float4(albedo,.035));
     O.velocity=ssfx_mv_calc(I.current,I.previous,0,0);
     return O;
 }

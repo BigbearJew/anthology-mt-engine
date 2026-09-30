@@ -269,7 +269,16 @@ IC static int CollideIntoGroup(dGeomID o1, dGeomID o2, dJointGroupID jointGroup,
             const float depth=anthology::snow::Contacts().At(cgeom.pos[0],cgeom.pos[1],cgeom.pos[2]);
             if (depth>.002f)
             {
-                anthology::snow::Touches().Push(cgeom.pos[0],cgeom.pos[1],cgeom.pos[2],.22f);
+                // Character capsules must not overwrite timed foot impressions.
+                // Resting props likewise need no new stamp on every ODE contact.
+                const auto* data=is_tri_1?usr_data_2:usr_data_1;
+                const dBodyID body=dGeomGetBody(is_tri_1?g2:g1);
+                if(data && data->ph_object && body && data->ph_object->CastType()==CPHObject::tpShell)
+                {
+                    const dReal* velocity=dBodyGetLinearVel(body);
+                    if(velocity[0]*velocity[0]+velocity[1]*velocity[1]+velocity[2]*velocity[2]>.01f)
+                        anthology::snow::Touches().Push(cgeom.pos[0],cgeom.pos[1],cgeom.pos[2],.22f);
+                }
                 if (surface.mu>0.f && surface.mu<10.f)
                     surface.mu *= 1.f + anthology::snow::Get(anthology::snow::Resistance)*
                         anthology::snow::Saturate(depth/.6f)*2.f;

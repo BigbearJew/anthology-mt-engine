@@ -26,9 +26,16 @@ class CSnowRenderer
     ref_geom geometry;
     ID3DVertexBuffer* vertexBuffer=nullptr;
     ID3DIndexBuffer* indexBuffer=nullptr;
-    ref_rt basePosition[2];
-    ref_texture positionTexture;
-    int boundPositionBank = -1;
+    static constexpr int TrackSide = 512;
+    static constexpr float TrackStep = .04f;
+    struct TrackPixel { float depth = 0.f, ground = 0.f; };
+    xr_vector<TrackPixel> tracks;
+    ID3D11Texture2D* trackSurface = nullptr;
+    ref_texture trackTexture;
+    int trackX = 0, trackZ = 0;
+    bool tracksDirty = false, meshDirty = true, settleHistory = false;
+    u32 meshRevision = 0, uploadedRevision = u32(-1);
+    int uploadedBank = -1;
     IGame_Level* level = nullptr;
     float step = .5f, distance = 0.f;
     int centerX = 0, centerZ = 0, radius = 0;
@@ -43,7 +50,9 @@ class CSnowRenderer
     void Update();
     void Rebuild();
     bool Valid(int x, int z, float ground);
-    void CopyGround();
+    void UpdateTracks();
+    void StampTrack(float x, float y, float z, float radius, float fx, float fz, bool bullet);
+    void UploadTracks();
     void CreateGeometry();
 public:
     ~CSnowRenderer() { Clear(); }

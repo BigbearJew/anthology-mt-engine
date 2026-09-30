@@ -1,0 +1,71 @@
+/**
+ * @ Version: SCREEN SPACE SHADERS - UPDATE 21
+ * @ Description: AO - Blur Phase
+ * @ Modified time: 2024-11-30 13:44
+ * @ Author: https://www.moddb.com/members/ascii1457
+ * @ Mod: https://www.moddb.com/mods/stalker-anomaly/addons/screen-space-shaders
+ */
+
+#include "screenspace_common.h"
+#include "settings_screenspace_AO.h"
+
+uniform float4 blur_setup; // x: | y: | z: Buffer width | w: Buffer Height
+uniform float4 ao_setup; // Res | Intensity | - | Radius
+
+Texture2D ao_image;
+Texture2D s_hud_mask;
+float ao_guided_filter; // Engine detects this to run the 7x7 guide only once.
+
+float guided_depth(float2 tc)
+{
+#ifdef USE_MSAA
+    return s_position.Load(int2(tc*screen_res.xy),0).z;
+#else
+    return s_position.SampleLevel(smp_nofilter,tc,0).z;
+#endif
+}
+
+
+float filter_test(float2 texcoord)
+{
+	int radius = 3; //1 or 3
+	float weight = float((radius * 2 + 1) * (radius * 2 + 1));
+
+	float guide = guided_depth(texcoord);
+
+	float4 x_x2_y_xy = (float4)0.0;
+
+	//box blur. change it to gauss if ya need
+	for(int i = -radius; i <= radius; i++)
+	for(int j = -radius; j <= radius; j++)
+	{
+		float2 coords = texcoord + float2(i, j) * max(.05,ao_setup.z) * max(1.0,ao_guided_filter) / blur_setup.zw;
+
+		coords=clamp(coords,screen_res.zw*.5,1-screen_res.zw*.5);
+        float s = ao_image.SampleLevel(smp_rtlinear, coords / blur_setup.x, 0.0).w;
+		float g = guided_depth(coords) - guide;
+	
+		x_x2_y_xy += float4(g, g * g, s, g * s); //marty mcfly style
+    }
+	x_x2_y_xy *= 1.0 / weight;
+
+	float cyx = (x_x2_y_xy.w - x_x2_y_xy.x * x_x2_y_xy.z);
+	float vx = (x_x2_y_xy.y - x_x2_y_xy.x * x_x2_y_xy.x) + 1e-4;
+
+	float beta = cyx * rcp(vx);
+	float alpha = x_x2_y_xy.z - beta * x_x2_y_xy.x;
+
+	return saturate(alpha);
+}
+
+float4 main(p_screen I) : SV_Target
+{
+	float2 tc = I.tc0 / blur_setup.x;
+
+	float2 tc2D = I.tc0.xy;
+	float2 Pos2D = I.hpos.xy;
+
+	float4 base_image = ao_image.SampleLevel(smp_linear, tc, 0);
+
+	return float4(base_image.rgb, filter_test(I.tc0.xy));
+} 

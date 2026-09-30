@@ -25,4 +25,23 @@ int main()
     }
     cache->Clear(1.f);
     assert(cache->At(.25f,0.f,.25f)==0.f);
+
+    // Movement applies resistance without stamping an idle actor every tick.
+    anthology::set_runtime_season(4);
+    Contacts().Clear(.5f);
+    for(int z=0;z<2;++z)for(int x=0;x<2;++x) Contacts().Publish(x,z,0.f,1.f);
+    Contact events[256];
+    for(int i=0;i<1000;++i) assert(Movement(.25f,0.f,.25f)<1.f);
+    assert(Touches().Drain(events)==0);
+    Footstep(.25f,0.f,.25f,1.f,0.f);
+    Impact(.25f,0.f,.25f);
+    Footstep(.25f,2.f,.25f,0.f,1.f); // Another floor must not leave a print.
+    assert(Touches().Drain(events)==2);
+    assert(!events[0].bullet && events[0].forwardX==1.f && events[1].bullet);
+    anthology::set_runtime_season(1);
+    Impact(.25f,0.f,.25f);
+    assert(Touches().Drain(events)==0 && Movement(.25f,0.f,.25f)==1.f);
+    ContactQueue bounded;
+    for(int i=0;i<1000;++i) bounded.Push(float(i),0.f,0.f,.1f);
+    assert(bounded.Drain(events)==256 && bounded.Drain(events)==0);
 }

@@ -15,6 +15,8 @@ class CStepManager
 	CEntityAlive* m_object;
 
 	u16 m_foot_bones[MAX_LEGS_COUNT];
+	Fvector m_snow_last_foot[MAX_LEGS_COUNT] = {};
+	u32 m_snow_last_stamp[MAX_LEGS_COUNT] = {};
 	CBlend* m_blend;
 
 	struct material_sound

@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "../xrCore/SnowField.h"
 #include "step_manager.h"
 #include "entity_alive.h"
 #include "../Include/xrRender/Kinematics.h"
@@ -198,6 +199,26 @@ void CStepManager::update(bool b_hud_view)
 					break;
 
 				CGameObject* object = smart_cast<CGameObject*>(m_object);
+				if (b_play && is_on_ground() && anthology::snow::Active() && object &&
+					(b_hud_view || m_foot_bones[i] != BI_NONE))
+				{
+					// First-person body bones may be in the idle pose. Keep the real
+					// step timing/leg but place it relative to the physical controller.
+					Fvector foot = b_hud_view ? m_object->Position() : get_foot_position(ELegType(i));
+					const Fvector& forward = m_object->XFORM().k;
+					if(b_hud_view)
+					{
+						const float side=(i&1)?.09f:-.09f;
+						foot.x+=forward.z*side;foot.z-=forward.x*side;
+					}
+					const Fvector& previous=m_snow_last_foot[i];
+					const float dx=foot.x-previous.x,dz=foot.z-previous.z;
+					if(!m_snow_last_stamp[i] || (cur_time-m_snow_last_stamp[i]>=120 && dx*dx+dz*dz>.004f))
+					{
+						anthology::snow::Footstep(foot.x, foot.y, foot.z, forward.x, forward.z);
+						m_snow_last_foot[i]=foot;m_snow_last_stamp[i]=cur_time;
+					}
+				}
 				if (b_play && is_on_ground() && object)
 				{
 					if (object->ID() == 0)

@@ -4,6 +4,7 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
+#include "../xrCore/SnowField.h"
 #include "Level_Bullet_Manager.h"
 #include "entity.h"
 #include "../xrEngine/gamemtllib.h"
@@ -256,6 +257,8 @@ void CBulletManager::FireShotmark(SBullet* bullet, const Fvector& vDir, const Fv
 
 void CBulletManager::StaticObjectHit(CBulletManager::_event& E)
 {
+	if (E.normal.y > .45f)
+		anthology::snow::Impact(E.point.x, E.point.y, E.point.z);
 	//	Fvector hit_normal;
 	FireShotmark(&E.bullet, E.bullet.dir, E.point, E.R, E.tgt_material, E.normal);
 	//	ObjectHit	(&E.bullet,					E.point, E.R, E.tgt_material, hit_normal);
