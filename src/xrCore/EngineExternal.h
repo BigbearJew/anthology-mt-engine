@@ -37,7 +37,8 @@ enum class EEngineExternalGame
 	EnableInventoryPistolSlot,
 	EnableImproveWeaponMisfire,
 	EnableDelayedWeaponActions,
-	EnableLegacyUpgradeSystem
+	EnableLegacyUpgradeSystem,
+	EnableAnomalyParams
 };
 
 enum class EEngineExternalRender 

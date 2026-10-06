@@ -1188,7 +1188,8 @@ void CLevel::GetGameDateTime	(u32& year, u32& month, u32& day, u32& hours, u32& 
 
 float CLevel::GetGameTimeFactor()
 {
-    return game->GetGameTimeFactor();
+    // Anomaly scripts query the factor while the client game is still starting.
+    return game ? game->GetGameTimeFactor() : 1.0f;
 }
 
 void CLevel::SetGameTimeFactor(const float fTimeFactor)

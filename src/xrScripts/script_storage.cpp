@@ -15,6 +15,7 @@
 #include <sstream>
 #include "lua_ext.h"
 #include "script_process.h"
+#include "AnomalyUnlocalizer.h"
 
 LPCSTR	file_header = "\
 local function script_name() \
@@ -47,6 +48,7 @@ CScriptStorage::~CScriptStorage()
 
 void CScriptStorage::reinit	()
 {
+	AnomalyUnlocalizer::Reset();
 	if (m_virtual_machine)
 	{
 		lua_close(m_virtual_machine);
@@ -379,7 +381,15 @@ bool CScriptStorage::do_file(LPCSTR caScriptName, LPCSTR caNameSpaceName)
 
 	// Addons resolve sibling resources through debug.getinfo().source.
 	const xr_string chunk_name = xr_string("@") + caScriptName;
-	if (!load_buffer(lua(), static_cast<LPCSTR>(l_tpFileReader->pointer()), (size_t)l_tpFileReader->length(), chunk_name.c_str(), caNameSpaceName))
+	LPCSTR source = static_cast<LPCSTR>(l_tpFileReader->pointer());
+	size_t size = l_tpFileReader->length();
+	xr_string transformed;
+	if (AnomalyUnlocalizer::Apply(caNameSpaceName, source, size, transformed))
+	{
+		source = transformed.c_str();
+		size = transformed.size();
+	}
+	if (!load_buffer(lua(), source, size, chunk_name.c_str(), caNameSpaceName))
 	{
 		lua_settop(lua(), start);
 		FS.r_close(l_tpFileReader);

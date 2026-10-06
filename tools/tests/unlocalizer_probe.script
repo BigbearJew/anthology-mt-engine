@@ -1,0 +1,25 @@
+local parameters = {value = 17}
+local private_value = 3
+local first, second = 2, 5
+local pending -- a declaration without an initializer
+local function exposed(value)
+    local parameters = {value = value}
+    return parameters.value
+end
+function read_values()
+    return parameters.value, private_value, first, second, pending
+end
+function local_scope()
+    local parameters = 9
+    return parameters
+end
+local literal = [==[
+local parameters = 'leave text intact'
+]==]
+local escaped = "first\
+local parameters = second"
+--[=[
+local parameters = 'leave comment intact'
+]=]
+-- local parameters = 'ordinary comment'
+function source_text() return literal, escaped end

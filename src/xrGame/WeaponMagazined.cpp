@@ -2,6 +2,7 @@
 #include "pch_script.h"
 
 #include "WeaponMagazined.h"
+#include "../xrEngine/AnomalyConfig.h"
 #include "Actor.h"
 #include "Scope.h"
 #include "Silencer.h"
@@ -2227,7 +2228,7 @@ void CWeaponMagazined::InitAddons()
 
 		if (IsZoomEnabled())
 		{
-			m_zoom_params.m_fIronSightZoomFactor = pSettings->r_float(get_scope_section, "scope_zoom_factor");
+			m_zoom_params.m_fIronSightZoomFactor = AnomalyConfig::IronZoom(*pSettings, get_scope_section.c_str(), m_anomalyParams);
 		}
 
 		m_lens_zoom_params.factor_min = READ_IF_EXISTS(pSettings, r_float, get_scope_section, "min_lens_factor", 1.0f);

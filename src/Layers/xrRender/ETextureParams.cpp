@@ -66,91 +66,7 @@ xr_token					tbmode_token							[ ]={
 	{ 0,					0											}
 };
 
-static bool FindAndValidateChunk(IReader& F, u32 ID, bool& IncorrectChunk)
-{
-	u32 dwSize, dwType;
-	bool success = false;
-	if (F.m_last_pos != 0)
-	{
-		F.seek(F.m_last_pos);
-		dwType = F.r_u32();
-		dwSize = F.r_u32();
-		if ((dwType & (~CFS_CompressMark)) == ID)
-		{
-			success = true;
-		}
-	}
-	if (!success)
-	{
-		F.rewind();
-		while (!F.eof())
-		{
-			dwType = F.r_u32();
-			dwSize = F.r_u32();
-			if ((dwType & (~CFS_CompressMark)) == ID)
-			{
-				success = true;
-				break;
-			}
-			else
-			{
-				//if (ID == THM_CHUNK_FADE_DELAY)
-				{
-					const u32 pos = F.tell();
-					const u32 size = F.length();
-					u32 length = dwSize;
-					if (pos + length != size)
-					{
-						bool TestSize = pos + length <= size - 8;
-
-						if (TestSize)
-						{
-							F.seek(pos + length);
-							TestSize = F.r_u32() == ID;
-						}
-
-						if (!TestSize)
-						{
-							length = 0;
-							while (pos + length < size)
-							{
-								F.seek(pos + length);
-
-								if (pos + length <= size - 8 && F.r_u32() == ID)
-									break;
-
-								length++;
-							}
-							
-							Msg("! THM chunk THM_CHUNK_... fixed, wrong size = %d, correct size = %d", dwSize, length);
-							IncorrectChunk = true;
-						}
-					}
-
-					F.seek(pos);
-					dwSize = length;
-				}
-				F.advance(dwSize);
-			}
-		}
-		if (!success)
-		{
-			F.m_last_pos = 0;
-			return 0;
-		}
-	}
-
-	const u32 dwPos = F.tell();
-	if (dwPos + dwSize < F.length())
-	{
-		F.m_last_pos = dwPos + dwSize;
-	}
-	else
-	{
-		F.m_last_pos = 0;
-	}
-	return dwSize;
-}
+#include "ThmChunk.h"
 
 bool STextureParams::Load(IReader& F)
 {
@@ -184,7 +100,7 @@ bool STextureParams::Load(IReader& F)
 	}
 
 	bool IncorrectChunk = false;
-	if (FindAndValidateChunk(F, THM_CHUNK_BUMP, IncorrectChunk))
+	if (FindTextureChunk(F, THM_CHUNK_BUMP, IncorrectChunk))
 	{
 		bump_virtual_height = F.r_float();
 		bump_mode = (ETBumpMode)F.r_u32();
@@ -196,10 +112,10 @@ bool STextureParams::Load(IReader& F)
 		F.r_stringZ(bump_name);
 	}
 
-	if (FindAndValidateChunk(F, THM_CHUNK_EXT_NORMALMAP, IncorrectChunk))
+	if (FindTextureChunk(F, THM_CHUNK_EXT_NORMALMAP, IncorrectChunk))
 		F.r_stringZ(ext_normal_map_name);
 
-	if (FindAndValidateChunk(F, THM_CHUNK_FADE_DELAY, IncorrectChunk))
+	if (FindTextureChunk(F, THM_CHUNK_FADE_DELAY, IncorrectChunk))
 		fade_delay = F.r_u8();
 
 	return IncorrectChunk;

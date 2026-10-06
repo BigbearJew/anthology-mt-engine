@@ -419,13 +419,14 @@ void CHudAnimatorManager::CallStartCallback()
 }
 
 ENGINE_API extern float psHUD_FOV_def;
+#include "../xrEngine/AnomalyConfig.h"
 
 float CHudAnimatorManager::GetHudFov() const
 {
 	if (!m_fHudFov || !m_bIsPlaying)
 	{
-		return psHUD_FOV_def * m_fHudFovFactor;
+		return AnomalyConfig::HudFovDegrees(psHUD_FOV_def, Device.fFOV) * m_fHudFovFactor;
 	}
 
-	return m_fHudFov * m_fHudFovFactor;
+	return AnomalyConfig::HudFovDegrees(m_fHudFov, Device.fFOV) * m_fHudFovFactor;
 }

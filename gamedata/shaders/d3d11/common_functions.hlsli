@@ -282,6 +282,14 @@ float3 v_sun(float3 N)
     return L_sun_color.xyz * dot(N, -L_sun_dir_w.xyz);
 }
 
+// Legacy model lighting used by the Anomaly parallax reflex lens shader.
+float3 calc_model_lq_lighting(float3 normal_w)
+{
+    float3 hemi = max(0.0, normal_w.y) * L_hemi_color.rgb;
+    float3 sun = L_sun_color.rgb * saturate(dot(normal_w, -L_sun_dir_w.xyz));
+    return L_material.x * hemi + L_ambient.rgb + L_material.y * sun;
+}
+
 float3 calc_reflection(float3 pos_w, float3 norm_w)
 {
     return reflect(normalize(pos_w - eye_position), norm_w);

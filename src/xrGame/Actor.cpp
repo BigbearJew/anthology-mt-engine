@@ -1205,6 +1205,9 @@ void CActor::g_Physics			(Fvector& _accel, float jump, float dt)
 
 float g_base_fov = 67.5f;
 float g_fov = g_base_fov;
+float g_ironsights_factor = 1.25f;
+
+#include "../xrEngine/AnomalyConfig.h"
 
 float CActor::currentFOV()
 {
@@ -1225,6 +1228,8 @@ float CActor::currentFOV()
 
 	if (eacFreeLook != cam_active && pWeapon && pWeapon->IsZoomed() && (!pWeapon->ZoomTexture() || (!pWeapon->IsRotatingToZoom() && pWeapon->ZoomTexture())))
 	{
+		if (pWeapon->UsesAnomalyParams())
+			return AnomalyConfig::ZoomFov(pWeapon->GetZoomFactor(), g_fov, g_ironsights_factor);
 		static const bool isAltFovCalc = EngineExternal()[EEngineExternalGame::EnableAlternateZoomFovCalc];
 		if (isAltFovCalc)
 		{

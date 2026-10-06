@@ -14,6 +14,7 @@
 #include "HUDManager.h"
 #include "../xrScripts/script_callback_ex.h"
 #include "Weapon.h"
+#include "../xrEngine/AnomalyConfig.h"
 
 ENGINE_API extern float psHUD_FOV_def;
 
@@ -44,6 +45,8 @@ CHudItem::~CHudItem()
 
 void CHudItem::Load(LPCSTR section)
 {
+	m_anomalyParams = AnomalyConfig::Enabled(*pSettings, section,
+		EngineExternal()[EEngineExternalGame::EnableAnomalyParams]);
 	hud_sect				= pSettings->r_string		(section,"hud");
 	hud_sect_cache = hud_sect;
 
@@ -54,7 +57,7 @@ void CHudItem::Load(LPCSTR section)
 	m_nearwall_target_hud_fov = READ_IF_EXISTS(pSettings, r_float, section, "nearwall_target_hud_fov", 0.27f);
 	m_nearwall_speed_mod = READ_IF_EXISTS(pSettings, r_float, section, "nearwall_speed_mod", 10.f);
 
-	m_fHudFov = READ_IF_EXISTS(pSettings, r_float, hud_sect, "hud_fov", 0.0f);
+	m_fHudFov = AnomalyConfig::HudFov(*pSettings, section, hud_sect.c_str(), m_anomalyParams);
 	m_fHudFovFactor = READ_IF_EXISTS(pSettings, r_float, hud_sect, "hud_fov_factor", 1.0f);
 
 	m_fLookOutSpeedKoef = READ_IF_EXISTS(pSettings, r_float, hud_sect, "lookout_speed_koef", 1.0f);
@@ -815,7 +818,7 @@ float CHudItem::GetHudFov()
 		clamp(dist, m_nearwall_dist_min, m_nearwall_dist_max);
 		float fDistanceMod = ((dist - m_nearwall_dist_min) / (m_nearwall_dist_max - m_nearwall_dist_min));
 
-		float fBaseFov = m_fHudFov ? m_fHudFov : psHUD_FOV_def;
+		float fBaseFov = AnomalyConfig::HudFovDegrees(m_fHudFov ? m_fHudFov : psHUD_FOV_def, Device.fFOV);
 		clamp(fBaseFov, 5.f, 180.f);
 		const static bool isCollision = EngineExternal()[EEngineExternalGame::EnableWeaponCollision];
 		if (isCollision)
@@ -823,7 +826,8 @@ float CHudItem::GetHudFov()
 			float src = m_nearwall_speed_mod * Device.fTimeDelta;
 			clamp(src, 0.f, 1.f);
 
-			float fTrgFov = m_nearwall_target_hud_fov + fDistanceMod * (fBaseFov - m_nearwall_target_hud_fov);
+			const float nearFov = m_anomalyParams ? AnomalyConfig::HudFovDegrees(m_nearwall_target_hud_fov, Device.fFOV) : m_nearwall_target_hud_fov;
+			float fTrgFov = nearFov + fDistanceMod * (fBaseFov - nearFov);
 			m_nearwall_last_hud_fov = m_nearwall_last_hud_fov * (1.f - src) + fTrgFov * src;
 		}
 		else

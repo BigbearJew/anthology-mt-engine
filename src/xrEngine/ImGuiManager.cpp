@@ -125,6 +125,7 @@ void CImGuiManager::Destroy(bool HardwareOnly)
 	}
 
 	RenderFrameData.clear();
+	ScriptRenderCallback = nullptr;
 
 	PlatformInitCallback = nullptr;
 	PlatformDestroyCallback = nullptr;
@@ -192,6 +193,8 @@ void CImGuiManager::AfterRender()
 void CImGuiManager::Render()
 {
 	ImGui::NewFrame();
+	if (ScriptRenderCallback)
+		ScriptRenderCallback(DrawUIRender && CaptureInputs);
 
 #ifdef DEBUG_DRAW
 	if (DrawUIRender)

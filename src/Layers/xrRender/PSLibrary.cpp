@@ -33,6 +33,9 @@ void CPSLibrary::OnCreate()
     	string_path		fn;
         FS.update_path	(fn,_game_data_,"particles.xr");
         Load			(fn);
+        // Anomaly/MO2 addons override or extend particles.xr with loose definitions.
+        if (FS.path_exist("$game_particles$"))
+            Load2();
     }
 }
  
@@ -129,6 +132,9 @@ bool CPSLibrary::Load2()
     FS.update_path				(_path, "$game_particles$", "");
 
 	FS.file_list				(files, _path, FS_ListFiles, "*.pe,*.pg");
+	xr_map<shared_str, size_t> effects, groups;
+	for (size_t i = 0; i < m_PEDs.size(); ++i) effects[m_PEDs[i]->m_Name] = i;
+	for (size_t i = 0; i < m_PGDs.size(); ++i) groups[m_PGDs[i]->m_Name] = i;
 
 #ifdef _EDITOR
 	SPBItem* pb = nullptr;
@@ -155,8 +161,23 @@ bool CPSLibrary::Load2()
         {
             PS::CPEDef*	def		= new PS::CPEDef();
             def->m_Name			= _path;
-            if (def->Load2(ini)) 
-            	m_PEDs.push_back(def);
+            if (def->Load2(ini))
+            {
+                auto existing = effects.find(def->m_Name);
+                if (existing != effects.end())
+                {
+                    auto*& old = m_PEDs[existing->second];
+                    old->DestroyShader();
+                    xr_delete(old);
+                    old = def;
+                }
+                else
+                {
+                    effects[def->m_Name] = m_PEDs.size();
+                    m_PEDs.push_back(def);
+                }
+                def->CreateShader();
+            }
             else
             	xr_delete		(def);
         }else
@@ -164,8 +185,21 @@ bool CPSLibrary::Load2()
         {
             PS::CPGDef*	def		= new PS::CPGDef();
             def->m_Name			= _path;
-            if (def->Load2(ini)) 
-            	m_PGDs.push_back(def);
+            if (def->Load2(ini))
+            {
+                auto existing = groups.find(def->m_Name);
+                if (existing != groups.end())
+                {
+                    auto*& old = m_PGDs[existing->second];
+                    xr_delete(old);
+                    old = def;
+                }
+                else
+                {
+                    groups[def->m_Name] = m_PGDs.size();
+                    m_PGDs.push_back(def);
+                }
+            }
             else
             	xr_delete		(def);
         }else
@@ -177,8 +211,9 @@ bool CPSLibrary::Load2()
 	std::sort			(m_PEDs.begin(),m_PEDs.end(),ped_sort_pred);
 	std::sort			(m_PGDs.begin(),m_PGDs.end(),pgd_sort_pred);
 
-	for (PS::PEDIt e_it = m_PEDs.begin(); e_it!=m_PEDs.end(); e_it++)
-    	(*e_it)->CreateShader();
+	m_all_ps.clear();
+	for (auto* def : m_PEDs) m_all_ps.push_back(def->m_Name);
+	for (auto* def : m_PGDs) m_all_ps.push_back(def->m_Name);
 
 #ifdef _EDITOR
     if(pb) UI->ProgressEnd		(pb);

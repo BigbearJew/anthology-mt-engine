@@ -8,7 +8,7 @@
 	#include "../../Editors/xrECore/Editor/UI_ToolsCustom.h"
 	#include "../../Editors/xrECore/Editor/ParticleEffectActions.h"
 #else
-
+	#include "AnomalyParticleActions.h"
 #endif
 
 //---------------------------------------------------------------------------
@@ -335,6 +335,8 @@ BOOL CPEDef::Load2(CInifile& ini)
         }
 		Compile							(m_EActionList);
     }
+#else
+	return AnomalyParticle::CompileActions(ini, m_Actions);
 #endif
 
 	return TRUE;

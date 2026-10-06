@@ -19,6 +19,7 @@ private:
 	bool CaptureInputs = false;
 
 public:
+	std::function<void(bool)> ScriptRenderCallback = nullptr;
 	ImGuiCallback PlatformInitCallback = nullptr;
 	ImGuiCallback PlatformDestroyCallback = nullptr;
 	ImGuiCallback PlatformNewFrameCallback = nullptr;

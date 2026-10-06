@@ -206,7 +206,7 @@ void CScriptEngine::init()
 
 	bool								save = m_reload_modules;
 	m_reload_modules = true;
-	process_file_if_exists("_g", false);
+	process_file_if_exists("_G", false);
 	m_reload_modules = save;
 
 	register_script_classes();
@@ -321,13 +321,15 @@ void CScriptEngine::process_file_if_exists(LPCSTR file_name, bool warn_if_not_ex
 	if (!m_reload_modules && namespace_loaded(file_name))
 		return;
 
-	script_list_type::iterator it = xray_scripts.find(xr_string(file_name));
+	// _G bootstraps globals; a later _g access is a separate script namespace.
+	const LPCSTR lookup_name = xr_strcmp(file_name, "_G") == 0 ? "_g" : file_name;
+	script_list_type::iterator it = xray_scripts.find(xr_string(lookup_name));
 	if (it != xray_scripts.end())
 	{
 		Msg("* loading script %s.script", file_name);
 		m_reload_modules = false;
 
-		load_file_into_namespace(it->second.c_str(), strcmp(file_name, "_g") == 0 ? "_G" : file_name);
+		load_file_into_namespace(it->second.c_str(), file_name);
 		return;
 	}
 

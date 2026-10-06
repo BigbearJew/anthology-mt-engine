@@ -18,6 +18,9 @@
 
 #else
 #	include "FreeMP/ScriptEvents.h"
+#	include "WeaponStatMgun.h"
+#	include "searchlight.h"
+void RegisterAnomalyImGui(lua_State* L);
 #	include "PHSimpleCalls.h"
 #	include "eatable_item.h"
 #	include "RadioactiveZone.h"
@@ -93,7 +96,7 @@ void export_classes	(lua_State *L)
 	CSE_ALifeItemsNotSave::script_register(L);
 	CSE_ALifeItemHelmet::script_register(L);
 	CSE_ALifeItemCustomOutfit::script_register(L);
-	//CSE_ALifeStationaryMgun::script_register(L);
+	CSE_ALifeStationaryMgun::script_register(L);
 	CSE_ALifeTraderAbstract::script_register(L);
 	CSE_ALifeTrader::script_register(L);
 	CSE_ALifeCustomZone::script_register(L);
@@ -202,6 +205,13 @@ void export_classes	(lua_State *L)
 	CTorch::script_register(L);
 	FactionState::script_register(L);
 	FractionState::script_register(L);
+	RegisterAnomalyImGui(L);
+	luabind::module(L)[
+		luabind::class_<CWeaponStatMgun, CGameObject>("CWeaponStatMgun")
+			.def(luabind::constructor<>()),
+		luabind::class_<CProjector, CGameObject>("CProjector")
+			.def(luabind::constructor<>())
+	];
 	CWeaponAK74::script_register(L);
 	CWeaponBinoculars::script_register(L);
 	CWeaponBM16::script_register(L);

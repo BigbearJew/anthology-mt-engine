@@ -28,6 +28,7 @@
 
 ENGINE_API extern float psHUD_FOV;
 ENGINE_API extern float psHUD_FOV_def;
+#include "../xrEngine/AnomalyConfig.h"
 
 void CActor::cam_Set	(EActorCameras style)
 {
@@ -404,11 +405,11 @@ void CActor::cam_Update(float dt, float fFOV)
 			else if (HudAnimator() && HudAnimator()->IsActive())
 				psHUD_FOV = HudAnimator()->GetHudFov();
 			else
-				psHUD_FOV = psHUD_FOV_def;
+				psHUD_FOV = AnomalyConfig::HudFovDegrees(psHUD_FOV_def, Device.fFOV);
 		}
 		else
 		{
-			psHUD_FOV = psHUD_FOV_def;
+			psHUD_FOV = AnomalyConfig::HudFovDegrees(psHUD_FOV_def, Device.fFOV);
 		}
 	}
 

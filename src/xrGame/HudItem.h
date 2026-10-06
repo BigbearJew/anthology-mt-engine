@@ -344,6 +344,7 @@ protected:
 	float						m_nearwall_target_hud_fov;
 	float						m_nearwall_speed_mod;
 	float						m_fHudFov;
+	bool                        m_anomalyParams = false;
 	float						m_fHudFovFactor;
 	float						m_fLookOutSpeedKoef = 1.0f;
 	float						m_fLookOutAmplK = 1.0f;

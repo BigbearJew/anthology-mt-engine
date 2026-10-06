@@ -705,6 +705,7 @@ void CCC_Register()
 	
 	CMD2(CCC_Boolean,	"rs_fps_show",			&IsFpsShow);
 	CMD4(CCC_Integer,	"rs_fps_limit",			&g_dwFPSlimit,		0, 1000);
+	CMD4(CCC_Integer, "r__framelimit", &g_dwFPSlimit, 0, 1000);
 
 	CMD3(CCC_Mask,		"rs_v_sync",			&psDeviceFlags,		rsVSync				);
 	
@@ -716,6 +717,7 @@ void CCC_Register()
 	CMD3(CCC_Mask,		"rs_stats",				&psDeviceFlags,		rsStatistic				);
 	CMD4(CCC_Float,		"rs_vis_distance",		&psVisDistance,		0.4f,	1.0f			);
 	CMD3(CCC_Mask,		"r_actor_shadow",		&psGameFlags,		rsActorShadow			);
+	CMD3(CCC_Mask, "r__actor_shadow", &psGameFlags, rsActorShadow);
 
 	CMD3(CCC_Mask,		"rs_cam_pos",			&psDeviceFlags,		rsCameraPos				);
 #ifdef DEBUG_DRAW

@@ -6,10 +6,13 @@ clsid_manager* g_pClsidManager;
 CImGuiGameSearchManager imgui_search_manager;
 CHudAdjustManager imgui_hud_adjust_manager;
 
+void RenderAnomalyImGui(bool overlayVisible);
+
 void RegisterImGuiInGame()
 {
 	if (!Device.IsEditorMode())
 	{
+		CImGuiManager::Instance().ScriptRenderCallback = RenderAnomalyImGui;
 		CImGuiManager::Instance().Subscribe("Time Manager", CImGuiManager::ERenderPriority::eMedium, RenderTimeManagerWindow);
 		CImGuiManager::Instance().Subscribe("Spawn Manager", CImGuiManager::ERenderPriority::eMedium, RenderSpawnManagerWindow);
 		CImGuiManager::Instance().Subscribe("Weapon Manager", CImGuiManager::ERenderPriority::eMedium, RenderWeaponManagerWindow);
@@ -33,6 +36,7 @@ void DestroyImGuiInGame()
 	}
 
 	DestroySpawnManagerWindow();
+	CImGuiManager::Instance().ScriptRenderCallback = nullptr;
 }
 
 eSelectedType CImGuiGameSearchManager::convertCLSIDToType(CLASS_ID id) {

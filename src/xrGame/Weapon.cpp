@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "Weapon.h"
+#include "../xrEngine/AnomalyConfig.h"
 #include "entity_alive.h"
 #include "inventory_item_impl.h"
 #include "Inventory.h"
@@ -2949,7 +2950,7 @@ void CWeapon::OnZoomIn()
 		clamp(m_fRTZoomFactor, m_zoom_params.m_fScopeZoomFactor, min_zoom_factor);
 		SetZoomFactor(m_fRTZoomFactor);
 	}
-	else if (CurrentZoomFactor() != 0)
+	else if (m_anomalyParams || CurrentZoomFactor() != 0)
 	{
 		m_zoom_params.m_fCurrentZoomFactor = CurrentZoomFactor();
 	}
@@ -3748,7 +3749,8 @@ u32 CWeapon::Cost() const
 float CWeapon::GetHudFov()
 {
 	float get = inherited::GetHudFov() / m_fHudFovFactor;
-	float zoom = m_HudFovZoom ? m_HudFovZoom : (get * Device.fFOV / g_fov);
+	float zoom = m_HudFovZoom ? AnomalyConfig::HudFovDegrees(m_HudFovZoom, Device.fFOV) :
+		(m_anomalyParams ? get : get * Device.fFOV / g_fov);
 	get += (zoom - get) * m_zoom_params.m_fZoomRotationFactor;
 
 	float hud_fov = m_fHudFovFactor;
@@ -4004,11 +4006,11 @@ void CWeapon::LoadCurrentScopeParams(LPCSTR section)
 	if (pSettings->line_exist(section, "scope_texture"))
 	{
 		scope_tex_name = pSettings->r_string(section, "scope_texture");
-		if (xr_strcmp(scope_tex_name, "none") != 0)
+		if (AnomalyConfig::HasScopeTexture(scope_tex_name.c_str()))
 			bScopeIsHasTexture = true;
 	}
 
-	m_zoom_params.m_fScopeZoomFactor = pSettings->r_float(section, "scope_zoom_factor");
+	m_zoom_params.m_fScopeZoomFactor = AnomalyConfig::ScopeZoom(*pSettings, section, m_anomalyParams);
 
 	if (bScopeIsHasTexture)
 	{

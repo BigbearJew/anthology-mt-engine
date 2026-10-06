@@ -1,9 +1,12 @@
 #include "xrCore/xrCore.h"
+#include "xrCore/EngineExternal.h"
 #include "xrEngine/ConfigSun.h"
+#include "xrEngine/AnomalyConfig.h"
 #include "xrScripts/linker.h"
-#include "xrScripts/script_storage.h"
+#include "xrScripts/script_engine.h"
 #include "xrScripts/dxml_bridge.h"
 #include "xrCore/FormatParsers/XML/xrXMLParser.h"
+#include "Layers/xrRender/ThmChunk.h"
 #include <fstream>
 
 static void check(bool success, const char* label)
@@ -16,7 +19,7 @@ static void check(bool success, const char* label)
     printf("PASS: %s\n", label);
 }
 
-class TestScriptStorage : public CScriptStorage
+class TestScriptStorage : public CScriptEngine
 {
 public:
     using CScriptStorage::reinit;
@@ -61,6 +64,54 @@ int main(int argc, char** argv)
     with_ini("[base]\na=1\nb=2\n![base]\na=3\n!b\n", [](const CInifile& ini) {
         check(ini.r_u32("base", "a") == 3 && !ini.line_exist("base", "b"), "ordinary override and deletion preserved");
     });
+    with_ini("[anomaly]\nhud_fov=0.65\n[native]\nanomaly_params=false\nscope_zoom_factor=25\n"
+        "[hybrid]\nscope_zoom_factor=30\nironsight_zoom_factor=45\n[hud]\nhud_fov=40\n[empty_hud]\n", [](const CInifile& ini) {
+        check(AnomalyConfig::Enabled(ini, "anomaly", true) && !AnomalyConfig::Enabled(ini, "anomaly", false) &&
+            !AnomalyConfig::Enabled(ini, "native", true), "compatibility is opt-in and supports native per-item override");
+        check(AnomalyConfig::ScopeZoom(ini, "anomaly", true) == 0.f &&
+            AnomalyConfig::IronZoom(ini, "anomaly", true) == 0.f, "missing Anomaly zoom retains FOV-relative ironsight semantics");
+        check(AnomalyConfig::ScopeZoom(ini, "native", false) == 25.f &&
+            AnomalyConfig::IronZoom(ini, "hybrid", false) == 30.f &&
+            AnomalyConfig::IronZoom(ini, "hybrid", true) == 45.f,
+            "explicit IX-Ray scope and ironsight settings remain usable");
+        check(fsimilar(AnomalyConfig::HudFov(ini, "anomaly", "empty_hud", true), .65f) &&
+            AnomalyConfig::HudFov(ini, "anomaly", "hud", true) == 40.f &&
+            AnomalyConfig::HudFov(ini, "anomaly", "empty_hud", false) == 0.f,
+            "Anomaly item HUD FOV fallback preserves native HUD section priority");
+    });
+    check(fsimilar(AnomalyConfig::ZoomFov(0.f, 90.f, 1.25f), 77.31962f) &&
+        fsimilar(AnomalyConfig::ZoomFov(0.f, 60.f, 1.25f), 49.58256f) &&
+        AnomalyConfig::ZoomFov(20.f, 90.f, 1.25f) == 15.f,
+        "Anomaly zoom follows changing FOV and explicit scope factors");
+    check(fsimilar(AnomalyConfig::HudFovDegrees(.65f, 80.f), 52.f) &&
+        AnomalyConfig::HudFovDegrees(40.f, 80.f) == 40.f,
+        "HUD fractional conversion leaves native degrees unchanged");
+    with_ini("[scope]\nscope_texture=\n", [](const CInifile& ini) {
+        check(!AnomalyConfig::HasScopeTexture(ini.r_string("scope", "scope_texture")) &&
+            !AnomalyConfig::HasScopeTexture("none") && !AnomalyConfig::HasScopeTexture("") &&
+            AnomalyConfig::HasScopeTexture("wpn_crosshair"), "empty scope texture disables overlay without a null string comparison");
+    });
+    {
+        CMemoryWriter chunks;
+        chunks.w_u32(1); chunks.w_u32(2); chunks.w_u16(9);
+        chunks.w_u32(2); chunks.w_u32(4); chunks.w_u32(73);
+        chunks.w_u32(3); chunks.w_u32(1); chunks.w_u8(8);
+        IReader reader(chunks.pointer(), chunks.size());
+        bool repaired = false;
+        check(FindTextureChunk(reader, 3, repaired) == 1 && reader.r_u8() == 8 && !repaired,
+            "THM traversal skips valid intermediate chunks without repairing");
+        check(FindTextureChunk(reader, 4, repaired) == 0 && !repaired,
+            "absent optional THM chunk is not corruption");
+        u32 wrong_size = 3;
+        memcpy(static_cast<u8*>(chunks.pointer()) + 4, &wrong_size, sizeof(wrong_size));
+        IReader malformed(chunks.pointer(), chunks.size());
+        check(FindTextureChunk(malformed, 2, repaired) == 4 && malformed.r_u32() == 73 && repaired,
+            "legacy THM incorrect preceding length is recovered within bounds");
+        IReader truncated(chunks.pointer(), 7);
+        repaired = false;
+        check(FindTextureChunk(truncated, 2, repaired) == 0 && !repaired,
+            "truncated THM header never reads outside the buffer");
+    }
     xr_string sun_text;
     for (unsigned hour = 0; hour < 24; ++hour)
     {
@@ -98,6 +149,13 @@ int main(int argc, char** argv)
         check(result == 0, "Anomaly Lua module uses native IX-Ray string/table/marshal/lfs implementations");
         if (lua_test)
         {
+            string_path global_path;
+            FS.update_path(global_path, "$game_scripts$", "global_probe.script");
+            scripts.xray_scripts["_g"] = global_path;
+            scripts.process_file("_G", true);
+            scripts.process_file("_g", true);
+            check(luaL_dostring(scripts.lua(), "assert(ixray_namespace_probe == 1 and _g.ixray_namespace_probe == 2)") == 0,
+                "global bootstrap and lowercase _g addon namespace remain distinct");
             string_path script_path;
             FS.update_path(script_path, "$game_scripts$", "path_probe.script");
             check(scripts.load_file_into_namespace(script_path, "path_probe"), "script file loads into its namespace");
@@ -107,6 +165,24 @@ int main(int argc, char** argv)
             check(lua_isstring(scripts.lua(), -1) && expected_source == lua_tostring(scripts.lua(), -1),
                 "Lua debug source retains virtual game path for addon resource lookup");
             lua_pop(scripts.lua(), 2);
+            FS.update_path(script_path, "$game_scripts$", "unlocalizer_probe.script");
+            check(scripts.load_file_into_namespace(script_path, "unlocalizer_probe") &&
+                luaL_dostring(scripts.lua(),
+                    "local p=unlocalizer_probe; assert(p.parameters.value==17 and p.private_value==nil); "
+                    "p.parameters.value=28; p.first=7; p.pending=11; "
+                    "local a,b,c,d,e=p.read_values(); assert(a==28 and b==3 and c==7 and d==5 and e==11); "
+                    "assert(p.exposed(6)==6 and p.local_scope()==9)") == 0,
+                "Anomaly unlocalizers expose configured tables/functions while preserving closures and indented locals");
+            check(luaL_dostring(scripts.lua(),
+                "local a,b=unlocalizer_probe.source_text(); "
+                "assert(a:find(\"local parameters = 'leave text intact'\",1,true)); "
+                "assert(b:find('local parameters = second',1,true))") == 0,
+                "unlocalizers leave multiline strings and comments intact");
+            check(scripts.load_file_into_namespace(script_path, "ordinary_probe") &&
+                luaL_dostring(scripts.lua(),
+                    "assert(ordinary_probe.parameters==nil and ordinary_probe.exposed==nil); "
+                    "local a,b,c,d,e=ordinary_probe.read_values(); assert(a==17 and b==3 and c==2 and d==5 and e==nil)") == 0,
+                "scripts without unlocalizer configuration keep native local semantics");
             xml_test_state = scripts.lua();
             xr_string output;
             lua_pushinteger(xml_test_state, 37);
@@ -135,6 +211,9 @@ int main(int argc, char** argv)
             const int cache_result = luaL_dofile(xml_test_state, "dxml_cache_test.lua");
             if (cache_result) fprintf(stderr, "%s\n", lua_tostring(xml_test_state, -1));
             check(cache_result == 0, "installed Anomaly DXML caches opted-in documents and repeats uncached callbacks");
+            const int mcm_result = luaL_dofile(xml_test_state, "mcm_native_test.lua");
+            if (mcm_result) fprintf(stderr, "%s\n", lua_tostring(xml_test_state, -1));
+            check(mcm_result == 0, "native MCM uses available command tokens/bounds without changing settings at discovery");
             CXml::SetReadCallback(nullptr);
             xml_test_state = nullptr;
             check(!CXml::HasReadCallback() && xml.Load("$game_config$", "ui", "dxml_probe.xml") && xml.ReadInt("value", 0, -1) == 5,
@@ -147,6 +226,23 @@ int main(int argc, char** argv)
         check(FS.exist(marker, "$game_config$", "anthology_ixray_probe.ltx") != nullptr, "MO2-only config visible");
         CInifile ini(marker);
         check(ini.r_u32("ixray_mo2_probe", "version") == 1, "MO2 config parsed by IX-Ray");
+        check(EngineExternal()[EEngineExternalGame::EnableAnomalyParams], "MO2 enables Anomaly parameters through native DLTX");
+        string_path settings_path;
+        FS.update_path(settings_path, "$game_config$", "system.ltx");
+        CInifile settings(settings_path);
+        check(AnomalyConfig::IronZoom(settings, "wpn_beretta", true) == 0.f,
+            "actual MO2 Beretta configuration accepts omitted scope_zoom_factor");
+        string_path inventory;
+        FS.update_path(inventory, "$app_data_root$", "ixray_effective_config.ltx");
+        std::ofstream config_output(inventory);
+        for (const auto* section : settings.sections())
+        {
+            config_output << '[' << section->Name.c_str() << "]\n";
+            for (const auto& item : section->Data)
+                config_output << item.first.c_str() << " = " << (item.second.c_str() ? item.second.c_str() : "") << '\n';
+            config_output << '\n';
+        }
+        check(config_output.good(), "effective Anomaly/MO2 configuration exported for parameter audit");
         string_path output;
         FS.update_path(output, "$app_data_root$", "mo2_vfs_verified.txt");
         std::ofstream file(output);

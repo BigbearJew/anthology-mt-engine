@@ -506,6 +506,7 @@ public:
 	IC void					SetZoomFactor		(float f) 		{m_zoom_params.m_fCurrentZoomFactor = f;}
 
 	virtual	float			CurrentZoomFactor	();
+	bool UsesAnomalyParams() const { return m_anomalyParams; }
 	//показывает, что оружие находится в соостоянии поворота для приближенного прицеливания
 			bool			IsRotatingToZoom	() const		{	return (m_zoom_params.m_fZoomRotationFactor<1.f);}
 
