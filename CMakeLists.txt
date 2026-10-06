@@ -113,6 +113,13 @@ add_subdirectory("src/3rd-party")
 # Engine libraries
 add_subdirectory("src")
 
+option(ANTHOLOGY_COMPAT_TESTS "Build isolated Anthology compatibility checks" OFF)
+if(ANTHOLOGY_COMPAT_TESTS)
+    add_executable(anthology_compat_tests tools/tests/compat_tests.cpp)
+    target_include_directories(anthology_compat_tests PRIVATE src)
+    target_link_libraries(anthology_compat_tests PRIVATE xrCore xrScripts)
+endif()
+
 # Plugins 
 if (IXRAY_PLUGINS)
     add_subdirectory("src/plugins")

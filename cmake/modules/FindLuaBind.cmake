@@ -14,7 +14,7 @@ set_target_properties(Lua::Lua PROPERTIES
 FetchContent_Declare(
     luabind
     GIT_REPOSITORY https://github.com/ForserX/luabind-latest.git
-    GIT_TAG        master
+    GIT_TAG        128ba59572e508f0c550f4ff8a5235c07c77de3d
 )
 
 set(LUABIND_TESTAPP OFF CACHE BOOL "" FORCE)

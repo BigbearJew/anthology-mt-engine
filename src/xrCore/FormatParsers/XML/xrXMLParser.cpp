@@ -4,6 +4,21 @@
 #include "xrXMLParser.h"
 #include "AsureXML.h"
 
+namespace
+{
+	CXml::ReadCallback xml_read_callback = nullptr;
+}
+
+void CXml::SetReadCallback(ReadCallback callback)
+{
+	xml_read_callback = callback;
+}
+
+bool CXml::HasReadCallback()
+{
+	return xml_read_callback != nullptr;
+}
+
 CXml::CXml() :	
 	m_root(nullptr), 
 	m_pLocalRoot(nullptr)
@@ -17,6 +32,8 @@ CXml::~CXml()
 void CXml::ClearInternal()
 {
 	m_Doc.Clear();
+	m_root = nullptr;
+	m_pLocalRoot = nullptr;
 }
 
 void ParseFile(LPCSTR path, CMemoryWriter& W, IReader *F, CXml* xml )
@@ -170,6 +187,27 @@ bool CXml::Load(LPCSTR path, LPCSTR xml_filename)
 		return false;
 	}
 
+	if (xml_read_callback)
+	{
+		// DXML sees the document after native IX-Ray overrides have been applied.
+		tinyxml2::XMLPrinter printer;
+		LPCSTR source = (LPCSTR)W.pointer();
+		if (!AsureData.empty())
+		{
+			m_Doc.Print(&printer);
+			source = printer.CStr();
+		}
+		xr_string transformed;
+		if (xml_read_callback(m_xml_file_name, source, transformed))
+		{
+			tinyxml2::XMLDocument replacement;
+			if (replacement.Parse(transformed.c_str()) == tinyxml2::XML_SUCCESS && replacement.FirstChildElement())
+				replacement.DeepCopy(&m_Doc);
+			else
+				Msg("! DXML: invalid replacement for %s (%s); keeping original XML", m_xml_file_name, replacement.ErrorStr());
+		}
+	}
+	m_pLocalRoot = nullptr;
 	m_root = m_Doc.FirstChildElement();
 	
 	return true;

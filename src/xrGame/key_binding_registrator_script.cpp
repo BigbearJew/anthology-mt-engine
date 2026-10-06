@@ -2,6 +2,7 @@
 #include "pch_script.h"
 #include "key_binding_registrator.h"
 #include "../xrEngine/xr_level_controller.h"
+#include "../xrEngine/xr_input.h"
 
 using namespace luabind;
 
@@ -9,11 +10,19 @@ int dik_to_bind(int dik){
 	return get_binded_action(dik);
 }
 
+BOOL key_state(int key)
+{
+	return pInput->iGetAsyncKeyState(key);
+}
+
 #pragma optimize("s",on)
 void key_binding_registrator::script_register(lua_State *L)
 {
 	module(L)
 	[
+		def("bind_to_dik", &get_action_dik),
+		def("dik_to_keyname", &dik_to_keyname),
+		def("key_state", &key_state),
 		def("dik_to_bind",		&dik_to_bind),
 
 		class_<enum_exporter<EGameActions> >("key_bindings")

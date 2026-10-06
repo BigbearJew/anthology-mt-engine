@@ -979,6 +979,15 @@ void CInifile::Load(IReader* F, LPCSTR path, allow_include_func_t allow_include_
 	F->seek(0);
 	LTXLoad(F, path, BaseData, BaseParentDataMap, false, true);
 
+	// Anomaly DLTX: @[name] overrides an existing section or creates one.
+	// Defer creation until the complete base tree is read, including later includes.
+	for (const xr_string& name : SectionsMarkedForCreate)
+	{
+		if (!BaseData.contains(name))
+			BaseData[name].Name = name.c_str();
+	}
+	SectionsMarkedForCreate.clear();
+
 	// Merge base and override data together
 	xr_vector<xr_string> PreviousEvaluations;
 
@@ -1274,12 +1283,15 @@ void CInifile::LTXLoad(IReader* F, LPCSTR path, xr_string_map<xr_string, Sect>& 
 
 			continue;
 		}
-		else if ((LTXHelpStr1[0] && (LTXHelpStr1[0] == '[')) || strstr(LTXHelpStr1, "![") == &LTXHelpStr1[0]) // new section ?
+		else if (LTXHelpStr1[0] == '[' || strstr(LTXHelpStr1, "![") == LTXHelpStr1 ||
+			strstr(LTXHelpStr1, "@[") == LTXHelpStr1)
 		{
 			// insert previous filled section
 			StashCurrentSection();
 
-			bIsCurrentSectionOverride = strstr(LTXHelpStr1, "![") == &LTXHelpStr1[0]; // Used to detect bad or unintended overrides
+			const bool createIfMissing = LTXHelpStr1[0] == '@';
+			bIsCurrentSectionOverride = LTXHelpStr1[0] == '!' || createIfMissing;
+			R_ASSERT3(strchr(LTXHelpStr1, ']'), "Bad ini section found: ", LTXHelpStr1);
 
 			Current = new Sect();
 
@@ -1292,6 +1304,8 @@ void CInifile::LTXLoad(IReader* F, LPCSTR path, xr_string_map<xr_string, Sect>& 
 			}
 
 			Current->Name = SecName.c_str();
+			if (createIfMissing && bOverridesOnly)
+				SectionsMarkedForCreate.insert(SecName);
 
 			// start new section
 			R_ASSERT3(strchr(LTXHelpStr1, ']'), "Bad ini section found: ", LTXHelpStr1);

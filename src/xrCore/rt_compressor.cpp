@@ -31,14 +31,26 @@ size_t rtc_compress(void *dst, u32 dst_len, const void* src, u32 src_len)
 	return	out_size;
 }
 
-size_t rtc_decompress(void* dst, u32 dst_len, const void* src, u32 src_len) {
+bool rtc_try_decompress(void* dst, u32 dst_len, const void* src, u32 src_len,
+    u32& actual_size, bool& output_overrun)
+{
 	lzo_uint out_size = dst_len;
-	int r = lzo1x_decompress	( 
+	const int r = lzo1x_decompress_safe(
 		(const lzo_byte *) src, (lzo_uint)	src_len,
 		(lzo_byte*) dst, &out_size,
 		rtc_wrkmem);
-	VERIFY	(r==LZO_E_OK);
-	return	out_size;
+	actual_size = u32(out_size);
+	output_overrun = r == LZO_E_OUTPUT_OVERRUN;
+	return r == LZO_E_OK && out_size <= dst_len;
+}
+
+size_t rtc_decompress(void* dst, u32 dst_len, const void* src, u32 src_len)
+{
+	u32 actual_size = 0;
+	bool output_overrun = false;
+	const bool valid = rtc_try_decompress(dst, dst_len, src, src_len, actual_size, output_overrun);
+	R_ASSERT2(valid, "Invalid compressed data or destination size");
+	return valid ? actual_size : 0;
 }
 
 

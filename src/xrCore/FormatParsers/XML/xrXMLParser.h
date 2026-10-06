@@ -13,6 +13,9 @@ class XRCORE_API	CXml
 {
 	bool 				Load					(LPCSTR path_alias, LPCSTR xml_filename);
 public:
+	using ReadCallback = bool (*)(LPCSTR filename, LPCSTR source, xr_string& result);
+	static void SetReadCallback(ReadCallback callback);
+	static bool HasReadCallback();
 	string_path			m_xml_file_name;
 						CXml					();
 	virtual				~CXml					();

@@ -1,3 +1,5 @@
+# DCC SDKs are only needed by the optional exporter plugins.
+if(IXRAY_PLUGINS)
 # 3DS Max SDK 
 set(IXR_3DS_MAX_SDK ${CMAKE_BINARY_DIR}/dep/max_2024.zip)
 
@@ -58,6 +60,7 @@ if(NOT EXISTS ${IXR_LW_SDK})
 endif()
 
 set(IXR_LW_SDK ${CMAKE_BINARY_DIR}/dep/lw_sdk_2020/)
+endif()
 
 # Discord GameSDK
 set(DISCORD_GAME_SDK_FILE ${CMAKE_BINARY_DIR}/dep/discord_gamesdk_3.2.1.zip)

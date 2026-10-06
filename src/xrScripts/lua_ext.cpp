@@ -218,12 +218,24 @@ bool LoadScriptToGlobal(lua_State* L, const char* name, bool KernelScript)
 
 void lua_init_ext(lua_State* L)
 {
+	const int stack_top = lua_gettop(L);
 	luaopen_marshal(L);
     open_string(L);
     open_table(L);
 	luaopen_lfs(L);
 	luaopen_LuaXML_lib(L);
 	luaopen_utf8(L);
+
+	// Anomaly exposes the signed 32-bit operations as globals as well.
+	lua_getglobal(L, "bit");
+	const char* bit_names[][2] = { {"band", "bit_and"}, {"bor", "bit_or"},
+		{"bxor", "bit_xor"}, {"bnot", "bit_not"} };
+	for (const auto& names : bit_names)
+	{
+		lua_getfield(L, -1, names[0]);
+		lua_setglobal(L, names[1]);
+	}
+	lua_pop(L, 1);
 
 
 	LoadScriptToGlobal(L, "global.lua");
@@ -239,6 +251,12 @@ void lua_init_ext(lua_State* L)
 		pdebug_init(L);
 		LoadScriptToGlobal(L, "LuaPanda.lua");
 	}
+
+	// Anomaly requires this module before using the native string/table/lfs/marshal extensions.
+	// Their implementations above are already initialized by IX-Ray.
+	static const luaL_Reg extensions[] = { { nullptr, nullptr } };
+	luaL_register(L, "lua_extensions", extensions);
+	lua_settop(L, stack_top);
 }
 
 SCRIPTS_API bool IsLDBGAttached = false;

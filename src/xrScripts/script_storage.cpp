@@ -377,7 +377,9 @@ bool CScriptStorage::do_file(LPCSTR caScriptName, LPCSTR caNameSpaceName)
 		return		(false);
 	}
 
-	if (!load_buffer(lua(), static_cast<LPCSTR>(l_tpFileReader->pointer()), (size_t)l_tpFileReader->length(), caNameSpaceName, caNameSpaceName))
+	// Addons resolve sibling resources through debug.getinfo().source.
+	const xr_string chunk_name = xr_string("@") + caScriptName;
+	if (!load_buffer(lua(), static_cast<LPCSTR>(l_tpFileReader->pointer()), (size_t)l_tpFileReader->length(), chunk_name.c_str(), caNameSpaceName))
 	{
 		lua_settop(lua(), start);
 		FS.r_close(l_tpFileReader);

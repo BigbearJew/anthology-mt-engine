@@ -34,12 +34,34 @@ u32 time_global(const CRenderDevice *self_)
 	return		(self_->dwTimeGlobal);
 }
 
+u32 time_continual(const CRenderDevice* self_)
+{
+	THROW(self_);
+	return self_->dwTimeContinual;
+}
+
+double performance_time_ms(const CRenderDevice* self_)
+{
+	THROW(self_);
+	return double(CPU::QPC()) * 1000.0 / double(CPU::qpc_freq);
+}
+
+extern ENGINE_API BOOL bShowPauseString;
+void set_device_paused_ex(CRenderDevice* d, bool paused)
+{
+	d->Pause(paused, TRUE, TRUE, "set_device_paused_ex_script");
+	bShowPauseString = FALSE;
+}
+
 #pragma optimize("s",on)
 void CScriptRenderDevice::script_register(lua_State *L)
 {
 	module(L)
 	[
 		class_<CRenderDevice>("render_device")
+			.def("time_continual", &time_continual)
+			.def("performance_time_ms", &performance_time_ms)
+			.def("pause_ex", &set_device_paused_ex)
 			.def_readonly("width",			static_cast<u32 CRenderDevice::*>(&CRenderDevice::TargetWidth))
 			.def_readonly("height",			static_cast<u32 CRenderDevice::*>(&CRenderDevice::TargetHeight))
 			.def_readonly("time_delta",		static_cast<u32 CRenderDevice::*>(&CRenderDevice::dwTimeDelta))

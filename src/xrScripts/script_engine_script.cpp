@@ -334,6 +334,7 @@ void CScriptEngine::script_register(lua_State *L)
 			.def("time",&profile_timer_script::time),
 
 		def("log1",								(void (*)(LPCSTR)) & Log),
+		def("log", &LuaLog),
 		def("error_log",						&ErrorLog),
 		def("flush",							&FlushLogs),
 		def("prefetch",							&prefetch_module),
@@ -356,14 +357,6 @@ void CScriptEngine::script_register(lua_State *L)
 #endif // #ifdef XRGAME_EXPORTS
 	];
 
-	if (DevicePtr != nullptr && Device.IsEditorMode())
-	{
-		module(L)
-		[
-			def("log", &LuaLog)
-		];
-	}
-	
 	module(L, "save")
 	[
 		def("call_error", &ixray::save::SaveError),

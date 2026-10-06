@@ -1,6 +1,8 @@
 #include "StdAfx.h"
 #include "pch_script.h"
 #include "ScriptXMLInit.h"
+#include "../xrScripts/script_engine.h"
+#include "../xrScripts/dxml_bridge.h"
 #include "../../xrUI/UIXmlInit.h"
 #include "../../xrUI/UITextureMaster.h"
 #include "../../xrUI/Widgets/UICheckButton.h"
@@ -25,6 +27,11 @@
 #include "../../xrUI/Widgets/UIStackPanel.h"
 
 using namespace luabind;
+
+bool XMLLuaCallback(LPCSTR filename, LPCSTR source, xr_string& result)
+{
+	return g_pScriptEngine && TransformXmlFromLua(g_pScriptEngine->lua(), filename, source, result);
+}
 
 void _attach_child(CUIWindow* _child, CUIWindow* _parent)
 {

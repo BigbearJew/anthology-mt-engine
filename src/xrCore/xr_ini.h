@@ -64,6 +64,7 @@ protected:
 	xr_string_map<xr_string, Sect> FinalData;
 	xr_string_map<xr_string, Sect> BaseData;
 	xr_string_map<xr_string, Sect> OverrideData;
+	xr_set<xr_string> SectionsMarkedForCreate;
 
 	xr_string_map<xr_string, xr_vector<xr_string>> BaseParentDataMap;
 	xr_string_map<xr_string, xr_vector<xr_string>> OverrideParentDataMap;

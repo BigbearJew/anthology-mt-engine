@@ -1,6 +1,8 @@
 #ifndef EnvironmentH
 #define EnvironmentH
 
+#include "ConfigSun.h"
+
 // refs
 class ENGINE_API	IRender_Visual;
 class ENGINE_API	CInifile;
@@ -359,6 +361,7 @@ public:
     void SplitTime(float time, u32& hours, u32& minutes, u32& seconds) const;
 
 	bool					m_paused;
+	ConfigSunTable m_config_sun;
 
 	CInifile*				m_ambients_config;
 	CInifile*				m_sound_channels_config;

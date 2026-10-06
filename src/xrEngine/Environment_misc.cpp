@@ -358,19 +358,28 @@ void CEnvDescriptor::load	(CEnvironment& environment, CInifile& config)
 	
 	if (config.line_exist(m_identifier.c_str(), "tree_amplitude_intensity"))
 		trees_amplitude = config.r_float(m_identifier.c_str(), "tree_amplitude_intensity");
-//	if (config.line_exist(m_identifier.c_str(),"sun_altitude"))
-		float sun_altitude = config.r_float(m_identifier.c_str(), "sun_altitude");
-		float sun_longitude = config.r_float(m_identifier.c_str(), "sun_longitude");
-		sun_dir.setHP			(
-			deg2rad(sun_altitude),
-			deg2rad(sun_longitude)
-		);
-	R_ASSERT				( _valid(sun_dir) );
-//	else
-//		sun_dir.setHP			(
-//			deg2rad(config.r_fvector2(m_identifier.c_str(),"sun_dir").y),
-//			deg2rad(config.r_fvector2(m_identifier.c_str(),"sun_dir").x)
-//		);
+    float sun_altitude, sun_longitude;
+    if (config.line_exist(m_identifier.c_str(), "sun_altitude"))
+    {
+        sun_altitude = config.r_float(m_identifier.c_str(), "sun_altitude");
+        sun_longitude = config.r_float(m_identifier.c_str(), "sun_longitude");
+    }
+    else if (environment.m_config_sun.loaded())
+    {
+        Fvector2 angles;
+        R_ASSERT2(environment.m_config_sun.sample(exec_time, angles), "Invalid weather execution time");
+        sun_altitude = angles.x;
+        sun_longitude = angles.y;
+    }
+    else
+    {
+        // Original CoP weather can also use the legacy pitch/heading pair.
+        const Fvector2 angles = config.r_fvector2(m_identifier.c_str(), "sun_dir");
+        sun_altitude = angles.y;
+        sun_longitude = angles.x;
+    }
+    sun_dir.setHP(deg2rad(sun_altitude), deg2rad(sun_longitude));
+    R_ASSERT(_valid(sun_dir));
 
 	if (sun_dir.y >= 0)
 	{

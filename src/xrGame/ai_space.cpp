@@ -15,6 +15,9 @@
 #include "cover_manager.h"
 #include "cover_point.h"
 #include "../xrScripts/script_engine.h"
+#include "../xrCore/FormatParsers/XML/xrXMLParser.h"
+
+extern bool XMLLuaCallback(LPCSTR filename, LPCSTR source, xr_string& result);
 #include "patrol_path_storage.h"
 #include "alife_simulator.h"
 #include "moving_objects.h"
@@ -59,6 +62,7 @@ void CAI_Space::init				()
 
 	VERIFY					(!g_pScriptEngine);
 	g_pScriptEngine = new CScriptEngine();
+	CXml::SetReadCallback(&XMLLuaCallback);
 	script_engine().init	();
 
 	IAnimNotifyHandler::SetHandler(new CAnimNotifyHandler());
@@ -72,6 +76,7 @@ void CAI_Space::init				()
 
 CAI_Space::~CAI_Space				()
 {
+	CXml::SetReadCallback(nullptr);
 	unload					();
 	
 	try {

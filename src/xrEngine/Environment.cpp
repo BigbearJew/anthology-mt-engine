@@ -88,6 +88,13 @@ CEnvironment::CEnvironment	() :
     m_thunderbolt_collections_config = new CInifile(FS.update_path(file_name, "$game_config$", "environment\\thunderbolt_collections.ltx"), TRUE, TRUE, FALSE);
     m_thunderbolts_config            = new CInifile(FS.update_path(file_name, "$game_config$", "environment\\thunderbolts.ltx"), TRUE, TRUE, FALSE);
 
+    if (FS.exist(file_name, "$game_config$", "environment\\sun_positions.ltx"))
+    {
+        CInifile sun_positions(file_name, TRUE, TRUE, FALSE);
+        R_ASSERT2(m_config_sun.load(sun_positions), "Invalid environment\\sun_positions.ltx: expected 24 hourly angle pairs");
+        Msg("* [Anthology] Loaded hourly sun positions");
+    }
+
     CInifile *config                 = new CInifile(FS.update_path(file_name, "$game_config$", "environment\\environment.ltx"), TRUE, TRUE, FALSE);
     // params
     p_var_alt                        = deg2rad(config->r_float("environment", "altitude"));
@@ -472,7 +479,13 @@ void CEnvironment::OnFrame()
 
     // Igor. Dynamic sun position.
     const static bool isReadSunConfig = EngineExternal()[EEngineExternalEnvironment::ReadSunConfig];
-    if (!isReadSunConfig && !::Render->is_sun_static())
+    Fvector2 sun_angles;
+    if (m_config_sun.sample(fGameTime, sun_angles))
+    {
+        if (!m_paused)
+            CurrentEnv->sun_dir.setHP(deg2rad(sun_angles.x), deg2rad(sun_angles.y));
+    }
+    else if (!isReadSunConfig && !::Render->is_sun_static())
         calculate_dynamic_sun_dir();
 
 	VERIFY2(CurrentEnv->sun_dir.y < 0, "Invalid sun direction settings in lerp");
