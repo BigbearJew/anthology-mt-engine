@@ -27,6 +27,15 @@ private:
 	ref_light		light_render;
 	ref_light		light_ambient;
 	CLAItem*		lanim;
+    shared_str m_defaultAnimator;
+    Fcolor m_defaultColor;
+    bool m_scriptAnimator = false;
+    bool m_flickering = false;
+    bool m_restoreLightState = false;
+    int m_flickerChance = 0;
+    float m_flickerDelay = 1.f;
+    float m_nextFlicker = 0.f;
+    float m_animatorRate = 1.f;
 	float			ambient_power;
 	BOOL			m_bState;
 	
@@ -46,6 +55,9 @@ public:
 	void			TurnOn			();
 	void			TurnOff			();
 	bool			IsActive();
+    bool IsFlickering() const { return m_flickering; }
+    void SetLanim(LPCSTR name, bool flicker, int chance, float delay, float framerate);
+    void ResetLanim();
 	virtual void	Load			( LPCSTR section);
 	virtual BOOL	net_Spawn		( CSE_Abstract* DC);
 	virtual void	net_Destroy		();

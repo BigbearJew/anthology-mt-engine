@@ -25,6 +25,8 @@ public:
 
 public:
 	float						buy_item_condition_factor;
+    float buy_item_exponent = 0.75f;
+    float sell_item_exponent = 0.75f;
 
 private:
 	static CTradeParameters		*m_instance;

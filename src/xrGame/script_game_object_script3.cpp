@@ -37,14 +37,79 @@
 
 #include "InventoryOwner.h"
 #include "Inventory.h"
+#include "trade_parameters.h"
 #include "Level.h"
 #include "WeaponMagazinedWGrenade.h"
+#include "HudItem.h"
+#include "player_hud.h"
+#include "ai_space.h"
+#include "../xrScripts/script_engine.h"
 
 namespace
 {
 CWeapon* cast_anomaly_weapon(CScriptGameObject* self)
 {
     return self ? self->object().cast_weapon() : nullptr;
+}
+
+// Anomaly's fourth argument selects the first-person model, not recursion.
+IKinematics* anomaly_bone_model(CScriptGameObject* self, bool hud)
+{
+    if (!self) return nullptr;
+    if (!hud)
+        return self->object().Visual() ? PKinematics(self->object().Visual()) : nullptr;
+    if (auto* item = self->object().cast_hud_item())
+    {
+        auto* data = item->HudItemData();
+        return data ? data->m_model : nullptr;
+    }
+    if (self->object().cast_actor() && g_player_hud && g_player_hud->GetModel())
+        return g_player_hud->GetModel()->dcast_PKinematics();
+    return nullptr;
+}
+void set_anomaly_bone_visible(CScriptGameObject* self, LPCSTR name,
+    bool visible, bool recursive, bool hud)
+{
+    auto* model = anomaly_bone_model(self, hud);
+    if (!model || !name || !*name) return;
+    const u16 bone = model->LL_BoneID(name);
+    if (bone != BI_NONE && !!model->LL_GetBoneVisible(bone) != visible)
+        model->LL_SetBoneVisible(bone, visible, recursive);
+}
+
+u32 play_anomaly_item_motion(CScriptGameObject* self, LPCSTR motion,
+    bool mix, u32 state, float speed, float end)
+{
+    auto* item = self ? self->object().cast_hud_item() : nullptr;
+    if (!item || !g_player_hud || !motion || !*motion || !item->HudAnimationExist(motion)) return 0;
+    return item->PlayHUDMotion(motion, mix ? EHudMixType::eMixAll : EHudMixType::eNoMix, state, speed, end);
+}
+u32 play_anomaly_item_motion_speed(CScriptGameObject* self, LPCSTR motion,
+    bool mix, u32 state, float speed)
+{
+    return play_anomaly_item_motion(self, motion, mix, state, speed, 0.f);
+}
+
+luabind::object anomaly_character_dialogs(CScriptGameObject* self)
+{
+    auto table = luabind::newtable(ai().script_engine().lua());
+    auto* owner = self ? self->object().cast_inventory_owner() : nullptr;
+    if (!owner || !owner->CharacterInfo().GetSpecificCharacterId().size()) return table;
+    int index = 1;
+    for (const auto& dialog : owner->CharacterInfo().ActorDialogs())
+        table[index++] = dialog.c_str();
+    return table;
+}
+
+void set_anomaly_buy_exponent(CScriptGameObject* self, float factor)
+{
+    auto* owner = self ? self->object().cast_inventory_owner() : nullptr;
+    if (owner && _valid(factor)) owner->trade_parameters().buy_item_exponent = factor;
+}
+void set_anomaly_sell_exponent(CScriptGameObject* self, float factor)
+{
+    auto* owner = self ? self->object().cast_inventory_owner() : nullptr;
+    if (owner && _valid(factor)) owner->trade_parameters().sell_item_exponent = factor;
 }
 
 void iterate_anomaly_inventory(CScriptGameObject* self, luabind::functor<bool> callback,
@@ -279,6 +344,7 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		//////////////////////////////////////////////////////////////////////////
 		.def("profile_name",				&CScriptGameObject::ProfileName)
 		.def("character_name",				&CScriptGameObject::CharacterName)
+        .def("character_dialogs", &anomaly_character_dialogs)
 		.def("character_icon",				&CScriptGameObject::CharacterIcon)
 		.def("character_rank",				&CScriptGameObject::CharacterRank)
 		.def("set_character_rank",			&CScriptGameObject::SetCharacterRank)
@@ -378,6 +444,8 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		.def("sell_condition",				(void (CScriptGameObject::*)(float,float))(&CScriptGameObject::sell_condition))
 		.def("buy_supplies",				&CScriptGameObject::buy_supplies)
 		.def("buy_item_condition_factor",	&CScriptGameObject::buy_item_condition_factor)
+        .def("buy_item_exponent", &set_anomaly_buy_exponent)
+        .def("sell_item_exponent", &set_anomaly_sell_exponent)
 
 		.def("sound_prefix",				(LPCSTR (CScriptGameObject::*)() const)(&CScriptGameObject::sound_prefix))
 		.def("sound_prefix",				(void (CScriptGameObject::*)(LPCSTR))(&CScriptGameObject::sound_prefix))
@@ -449,6 +517,7 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		.def("get_luminocity", 				&CScriptGameObject::GetLuminocity)
 		.def("bone_visible", 				&CScriptGameObject::IsBoneVisible)
 		.def("set_bone_visible", 			&CScriptGameObject::SetBoneVisible)
+        .def("set_bone_visible", &set_anomaly_bone_visible)
 		.def("force_set_position", 			&CScriptGameObject::ForceSetPosition)
 		.def("set_spatial_type", 			&CScriptGameObject::SetSpatialType)
 		.def("get_spatial_type", 			&CScriptGameObject::GetSpatialType)
@@ -534,6 +603,8 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 
 		// For CHudItem
 		.def("play_hud_motion",				&CScriptGameObject::PlayHudMotion)
+        .def("play_hud_motion", &play_anomaly_item_motion_speed)
+        .def("play_hud_motion", &play_anomaly_item_motion)
 		.def("switch_state",				&CScriptGameObject::SwitchState)
 		.def("get_state",					&CScriptGameObject::GetState)
 			

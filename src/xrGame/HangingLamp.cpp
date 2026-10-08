@@ -31,7 +31,13 @@ void CHangingLamp::Init()
 	fHealth					= 100.f;
 	light_bone				= BI_NONE;
 	ambient_bone			= BI_NONE;
-	lanim					= 0;
+	lanim = 0;
+    m_defaultAnimator = "";
+    m_defaultColor.set(1.f, 1.f, 1.f, 1.f);
+    m_scriptAnimator = m_flickering = m_restoreLightState = false;
+    m_flickerChance = 0;
+    m_flickerDelay = m_animatorRate = 1.f;
+    m_nextFlicker = 0.f;
 	ambient_power			= 0.f;
 	light_render			= 0;
 	light_ambient			= 0;
@@ -102,6 +108,7 @@ BOOL CHangingLamp::net_Spawn(CSE_Abstract* DC)
 	fBrightness				= lamp->brightness;
 	clr.set					(lamp->color);						clr.a = 1.f;
 	clr.mul_rgb				(fBrightness);
+    m_defaultColor = clr;
 
 	light_render			= ::Render->light_create();
 	light_render->set_shadow(!!lamp->flags.is(CSE_ALifeObjectHangingLamp::flCastShadow));
@@ -137,7 +144,8 @@ BOOL CHangingLamp::net_Spawn(CSE_Abstract* DC)
 
 	fHealth					= lamp->m_health;
 
-	lanim					= LALib.FindItem(*lamp->color_animator);
+	m_defaultAnimator = lamp->color_animator;
+    lanim = LALib.FindItem(*m_defaultAnimator);
 
 	CPHSkeleton::Spawn(e);
 	if (Visual() && Visual()->dcast_PKinematicsAnimated())Visual()->dcast_PKinematicsAnimated()->PlayCycle("idle");
@@ -195,7 +203,7 @@ BOOL	CHangingLamp::net_SaveRelevant	()
 void	CHangingLamp::	save			(NET_Packet &output_packet)
 {
 	inherited::save(output_packet);
-	output_packet.w_u8((u8)m_bState);
+	output_packet.w_u8((u8)(m_scriptAnimator ? m_restoreLightState : !!m_bState));
 
 }
 void	CHangingLamp::load				(IReader &input_packet)
@@ -208,7 +216,16 @@ void CHangingLamp::shedule_Update	(u32 dt)
 	CPHSkeleton::Update(dt);
 
 
-	inherited::shedule_Update		(dt);
+    // Scheduler remains active while a flickering lamp is temporarily switched off.
+    if (Alive() && light_render && m_flickering && Device.fTimeGlobal >= m_nextFlicker)
+    {
+        m_nextFlicker = Device.fTimeGlobal + m_flickerDelay;
+        if (Random.randI(1, 101) >= m_flickerChance)
+        {
+            if (m_bState) TurnOff(); else TurnOn();
+        }
+    }
+	inherited::shedule_Update(dt);
 }
 
 void CHangingLamp::UpdateCL	()
@@ -253,7 +270,7 @@ void CHangingLamp::UpdateCL	()
 		
 		if (lanim){
 			int frame;
-			u32 clr					= lanim->CalculateBGR(Device.fTimeGlobal,frame); // возвращает в формате BGR
+			u32 clr					= lanim->CalculateBGR(Device.fTimeGlobal * m_animatorRate,frame); // возвращает в формате BGR
 			Fcolor					fclr;
 			fclr.set				((float)color_get_B(clr),(float)color_get_G(clr),(float)color_get_R(clr),1.f);
 			fclr.mul_rgb			(fBrightness/255.f);
@@ -265,6 +282,41 @@ void CHangingLamp::UpdateCL	()
 			}
 		}
 	}
+}
+
+void CHangingLamp::SetLanim(LPCSTR name, bool flicker, int chance, float delay, float framerate)
+{
+    if (!light_render || !name || !_valid(delay) || !_valid(framerate)) return;
+    if (!m_scriptAnimator) m_restoreLightState = !!m_bState;
+    m_scriptAnimator = true;
+    lanim = LALib.FindItem(name);
+    // Animation library entries are shared: change playback time per instance.
+    m_animatorRate = lanim && lanim->fFPS > EPS && framerate > 0.f
+        ? framerate / lanim->fFPS : 1.f;
+    m_flickering = flicker;
+    m_flickerChance = _max(0, _min(chance, 100));
+    m_flickerDelay = _max(delay, 0.01f);
+    m_nextFlicker = Device.fTimeGlobal + m_flickerDelay;
+}
+
+void CHangingLamp::ResetLanim()
+{
+    if (!m_scriptAnimator) return;
+    m_scriptAnimator = m_flickering = false;
+    m_animatorRate = 1.f;
+    lanim = LALib.FindItem(*m_defaultAnimator);
+    if (light_render) light_render->set_color(m_defaultColor);
+    if (glow_render) glow_render->set_color(m_defaultColor);
+    if (light_ambient)
+    {
+        Fcolor color = m_defaultColor;
+        color.mul_rgb(ambient_power);
+        light_ambient->set_color(color);
+    }
+    if (light_render)
+    {
+        if (m_restoreLightState) TurnOn(); else TurnOff();
+    }
 }
 
 void CHangingLamp::TurnOn	()
@@ -422,6 +474,9 @@ void CHangingLamp::script_register(lua_State *L)
 			.def(luabind::constructor<>())
 			.def("turn_on",		&CHangingLamp::TurnOn)
 			.def("turn_off",	&CHangingLamp::TurnOff)
-			.def("is_on",		&CHangingLamp::IsActive) // FNAS
+			.def("is_flickering", &CHangingLamp::IsFlickering)
+            .def("set_color_animator", &CHangingLamp::SetLanim)
+            .def("reset_color_animator", &CHangingLamp::ResetLanim)
+            .def("is_on",		&CHangingLamp::IsActive) // FNAS
 	];
 }

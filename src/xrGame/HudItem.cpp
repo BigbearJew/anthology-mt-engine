@@ -517,8 +517,9 @@ bool CHudItem::HudAnimationExist(const shared_str& anim_name)
 	}
 }
 
-u32 CHudItem::PlayHUDMotion(const shared_str& M, EHudMixType bMixIn, u32 state)
+u32 CHudItem::PlayHUDMotion(const shared_str& M, EHudMixType bMixIn, u32 state, float speed, float end)
 {
+    if (!_valid(speed) || speed <= 0.f || !_valid(end)) return 0;
 	if (HudItemData() && !HudAnimationExist(M.c_str()))
 	{
 		Msg("! model [%s] has no motion alias defined [%s]", hud_sect.c_str(), M.c_str());
@@ -533,7 +534,7 @@ u32 CHudItem::PlayHUDMotion(const shared_str& M, EHudMixType bMixIn, u32 state)
 		PlaySound("sndByMotion", m_object->Position());
 	}
 
-	u32 anim_time = PlayHUDMotion_noCB(M.c_str(), bMixIn);
+	u32 anim_time = PlayHUDMotion_noCB(M.c_str(), bMixIn, speed);
 	if (anim_time>0)
 	{
 		m_bStopAtEndAnimIsRunning	= true;
@@ -541,6 +542,9 @@ u32 CHudItem::PlayHUDMotion(const shared_str& M, EHudMixType bMixIn, u32 state)
 		m_dwMotionCurrTm			= m_dwMotionStartTm;
 		m_dwMotionEndTm				= m_dwMotionStartTm + anim_time;
 		m_startedMotionState		= state;
+        // Anomaly end is an early callback offset in seconds. Avoid unsigned underflow.
+        const float trim = _min(_max(end * 1000.f, 0.f), float(anim_time));
+        m_dwMotionEndTm -= u32(trim);
 	}else
 		m_bStopAtEndAnimIsRunning	= false;
 
@@ -561,7 +565,7 @@ bool CHudItem::AddSuffixName(shared_str& anim, LPCSTR suffix, LPCSTR test_suffix
 	return false;
 }
 
-u32 CHudItem::PlayHUDMotion_noCB(const shared_str& motion_name, EHudMixType bMixIn)
+u32 CHudItem::PlayHUDMotion_noCB(const shared_str& motion_name, EHudMixType bMixIn, float speed)
 {
 	m_current_motion					= motion_name;
 
@@ -576,11 +580,11 @@ u32 CHudItem::PlayHUDMotion_noCB(const shared_str& motion_name, EHudMixType bMix
 	}
 	if( HudItemData() )
 	{
-		return HudItemData()->anim_play		(motion_name, bMixIn, m_current_motion_def, m_started_rnd_anim_idx);
+		return HudItemData()->anim_play		(motion_name, bMixIn, m_current_motion_def, m_started_rnd_anim_idx, speed);
 	}else
 	{
 		m_started_rnd_anim_idx				= 0;
-		return g_player_hud->motion_length	(motion_name, HudSection(), m_current_motion_def );
+		return u32(float(g_player_hud->motion_length(motion_name, HudSection(), m_current_motion_def)) / speed);
 	}
 }
 

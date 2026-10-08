@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "Torch.h"
+#include "../xrEngine/AnomalyConfig.h"
 #include "Entity.h"
 #include "Actor.h"
 #include "../xrEngine/LightAnimLibrary.h"
@@ -176,31 +177,44 @@ BOOL CTorch::net_Spawn(CSE_Abstract* DC)
 	b_r2					|= !!psDeviceFlags.test(rsR4);
 
 	IKinematics* K			= PKinematics(Visual());
-	CInifile* pUserData		= K->LL_UserData(); 
+	CInifile* lightSettings = K->LL_UserData();
+    xr_string lightSection = "torch_definition";
+    if (AnomalyConfig::Enabled(*pSettings, cNameSect().c_str(),
+        EngineExternal()[EEngineExternalGame::EnableAnomalyParams]))
+    {
+        lightSection = READ_IF_EXISTS(pSettings, r_string, cNameSect().c_str(),
+            "light_section", "torch_definition");
+        if (Actor() && torch->ID_Parent == Actor()->ID())
+        {
+            const xr_string actorSection = lightSection + "_actor";
+            if (pSettings->section_exist(actorSection.c_str())) lightSection = actorSection;
+        }
+        lightSettings = pSettings;
+    }
 
-	if (pUserData != nullptr)
+	if (lightSettings != nullptr)
 	{
-		R_ASSERT3(pUserData, "Empty Torch user data!", torch->get_visual());
-		lanim = LALib.FindItem(pUserData->r_string("torch_definition", "color_animator"));
-		guid_bone = K->LL_BoneID(pUserData->r_string("torch_definition", "guide_bone"));	VERIFY(guid_bone != BI_NONE);
+		R_ASSERT3(lightSettings, "Empty Torch user data!", torch->get_visual());
+		lanim = LALib.FindItem(lightSettings->r_string(lightSection.c_str(), "color_animator"));
+		guid_bone = K->LL_BoneID(lightSettings->r_string(lightSection.c_str(), "guide_bone"));	VERIFY(guid_bone != BI_NONE);
 
-		Fcolor clr = pUserData->r_fcolor("torch_definition", (b_r2) ? "color_r2" : "color");
+		Fcolor clr = lightSettings->r_fcolor(lightSection.c_str(), (b_r2) ? "color_r2" : "color");
 		fBrightness = clr.intensity();
-		float range = pUserData->r_float("torch_definition", (b_r2) ? "range_r2" : "range");
+		float range = lightSettings->r_float(lightSection.c_str(), (b_r2) ? "range_r2" : "range");
 		light_render->set_color(clr);
 		light_render->set_range(range);
 
-		Fcolor clr_o = pUserData->r_fcolor("torch_definition", (b_r2) ? "omni_color_r2" : "omni_color");
-		float range_o = pUserData->r_float("torch_definition", (b_r2) ? "omni_range_r2" : "omni_range");
+		Fcolor clr_o = lightSettings->r_fcolor(lightSection.c_str(), (b_r2) ? "omni_color_r2" : "omni_color");
+		float range_o = lightSettings->r_float(lightSection.c_str(), (b_r2) ? "omni_range_r2" : "omni_range");
 		light_omni->set_color(clr_o);
 		light_omni->set_range(range_o);
 
-		light_render->set_cone(deg2rad(pUserData->r_float("torch_definition", "spot_angle")));
-		light_render->set_texture(pUserData->r_string("torch_definition", "spot_texture"));
+		light_render->set_cone(deg2rad(lightSettings->r_float(lightSection.c_str(), "spot_angle")));
+		light_render->set_texture(lightSettings->r_string(lightSection.c_str(), "spot_texture"));
 
-		glow_render->set_texture(pUserData->r_string("torch_definition", "glow_texture"));
+		glow_render->set_texture(lightSettings->r_string(lightSection.c_str(), "glow_texture"));
 		glow_render->set_color(clr);
-		glow_render->set_radius(pUserData->r_float("torch_definition", "glow_radius"));
+		glow_render->set_radius(lightSettings->r_float(lightSection.c_str(), "glow_radius"));
 
 		//включить/выключить фонарик
 		Switch(torch->m_active);

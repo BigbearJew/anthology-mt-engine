@@ -767,7 +767,7 @@ void attachable_hud_item::anim_play_bonepart(const shared_str& anim, BOOL bMixIn
 	}
 }
 
-u32 attachable_hud_item::anim_play(const shared_str& anm_name_b, EHudMixType bMixIn, const CMotionDef*& md, u8& rnd_idx)
+u32 attachable_hud_item::anim_play(const shared_str& anm_name_b, EHudMixType bMixIn, const CMotionDef*& md, u8& rnd_idx, float speed)
 {
 	R_ASSERT				(strstr(anm_name_b.c_str(),"anm_")==anm_name_b.c_str());
 
@@ -783,7 +783,8 @@ u32 attachable_hud_item::anim_play(const shared_str& anm_name_b, EHudMixType bMi
 		rnd_idx = u8(-1);
 	}
 
-	float speed = anm->m_anim_speed;
+	if (speed == 1.f) speed = anm->m_anim_speed;
+    if (!_valid(speed) || speed <= 0.f) speed = 1.f;
 
 	bool need_mix_hands = bMixIn >= EHudMixType::eMixHands;
 

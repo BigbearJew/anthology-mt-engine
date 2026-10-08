@@ -238,7 +238,7 @@ struct attachable_hud_item
 	void		tune				(Fvector values);
 	void		anim_play			(const shared_str& item_anm_name, EHudMixType bMixIn, float speed, player_hud_motion* anm = nullptr);
 	void		anim_play_bonepart	(const shared_str& anim, BOOL bMixIn);
-	u32			anim_play			(const shared_str& anim_name, EHudMixType bMixIn, const CMotionDef*& md, u8& rnd);
+	u32			anim_play			(const shared_str& anim_name, EHudMixType bMixIn, const CMotionDef*& md, u8& rnd, float speed = 1.f);
 
 };
 
