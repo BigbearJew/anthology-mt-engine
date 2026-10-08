@@ -54,12 +54,28 @@ cphysics_joint_scripted	*cphysics_shell_scripted::get_JointByStoreOrder( u16 idx
 	return get_script_wrapper<cphysics_joint_scripted>( *J ) ;
 }
 
+void cphysics_shell_scripted::freeze()
+{
+    const u16 count = get_ElementsNumber();
+    for (u16 i = 0; i < count; ++i) get_ElementByStoreOrder(i)->Fix();
+    physics_impl().collide_class_bits().set(1u << 1, TRUE); // cbNCStatic
+}
+
+void cphysics_shell_scripted::unfreeze()
+{
+    const u16 count = get_ElementsNumber();
+    for (u16 i = 0; i < count; ++i) get_ElementByStoreOrder(i)->ReleaseFixed();
+    physics_impl().collide_class_bits().set(1u << 1, FALSE); // cbNCStatic
+}
+
 #pragma optimize("s",on)
 void cphysics_shell_scripted::script_register( lua_State *L )
 {
 	module(L)
 		[
 			class_<cphysics_shell_scripted>("physics_shell")
+            .def("freeze", &cphysics_shell_scripted::freeze)
+            .def("unfreeze", &cphysics_shell_scripted::unfreeze)
 			.def("apply_force",					(void (cphysics_shell_scripted::*)(float,float,float))(&cphysics_shell_scripted::applyForce))
 			.def("get_element_by_bone_name",	(cphysics_element_scripted*(cphysics_shell_scripted::*)(LPCSTR))(&cphysics_shell_scripted::get_Element))
 			.def("get_element_by_bone_id",		(cphysics_element_scripted*(cphysics_shell_scripted::*)(u16))(&cphysics_shell_scripted::get_Element))

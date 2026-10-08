@@ -1068,6 +1068,13 @@ void CCustomZone::UpdateBlowout()
 	}
 }
 
+void CCustomZone::MoveScript(const Fvector& position)
+{
+    if (!_valid(position.x) || !_valid(position.y) || !_valid(position.z)) return;
+    XFORM().translate_over(position);
+    OnMove();
+}
+
 void  CCustomZone::OnMove()
 {
 	if(m_dwLastTimeMoved == 0)

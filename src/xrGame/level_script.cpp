@@ -290,6 +290,49 @@ void set_weather	(LPCSTR weather_name, bool forced)
 		g_pGamePersistent->Environment().SetWeather(weather_name,forced);
 }
 
+float get_weather_weight()
+{
+    if (!g_pGamePersistent || !g_pGamePersistent->Environment().CurrentEnv) return 0.f;
+    return g_pGamePersistent->Environment().CurrentEnv->weight;
+}
+
+void set_weather_weight(float weight)
+{
+    if (!g_pGamePersistent || !_valid(weight)) return;
+    auto& env = g_pGamePersistent->Environment();
+    if (!env.Current[0] || !env.Current[1]) return;
+    const float day = 24.f * 60.f * 60.f;
+    const float t0 = env.Current[0]->exec_time;
+    const float t1 = env.Current[1]->exec_time;
+    const float span = t1 >= t0 ? t1 - t0 : day - t0 + t1;
+    if (!_valid(span) || span <= EPS) return;
+    clamp(weight, 0.f, 1.f);
+    // Preserve descriptor spacing, including intervals crossing midnight.
+    float start = fmodf(env.GetGameTime() - weight * span, day);
+    if (start < 0.f) start += day;
+    env.Current[0]->exec_time = start;
+    env.Current[1]->exec_time = fmodf(start + span, day);
+}
+
+bool weather_exists(LPCSTR name)
+{
+    if (!g_pGamePersistent || !name || !*name) return false;
+    const auto& cycles = g_pGamePersistent->Environment().WeatherCycles;
+    return cycles.find(shared_str(name)) != cycles.end();
+}
+
+void set_weather_smooth(LPCSTR name)
+{
+    if (!weather_exists(name)) return;
+    auto& env = g_pGamePersistent->Environment();
+    env.SetWeather(name, false);
+    if (!env.Current[1] || !env.CurrentWeather || env.CurrentWeather->empty()) return;
+    const auto& descriptors = *env.CurrentWeather;
+    const auto next = std::lower_bound(descriptors.begin(), descriptors.end(), env.GetGameTime(),
+        [](const CEnvDescriptor* descriptor, float time) { return descriptor->exec_time < time; });
+    env.Current[1] = next == descriptors.end() ? descriptors.front() : *next;
+}
+
 bool set_weather_fx	(LPCSTR weather_name)
 {
 		return		(g_pGamePersistent->Environment().SetWeatherFX(weather_name));
@@ -1564,6 +1607,10 @@ void CLevel::script_register(lua_State *L)
 #endif
 		def("set_time_factor_single", set_time_factor_single), // FNAS
 		def("get_weather",						get_weather),
+        def("get_weather_weight", get_weather_weight),
+        def("set_weather_weight", set_weather_weight),
+        def("weather_exists", weather_exists),
+        def("set_weather_smooth", set_weather_smooth),
 		def("set_weather",						set_weather),
 		def("set_weather_fx",					set_weather_fx),
 		def("set_past_weather", set_past_wdesc),

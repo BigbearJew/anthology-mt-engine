@@ -326,6 +326,7 @@ virtual				void						GetGlobalTransformDynamic					(Fmatrix* m) 																
 	virtual			void						SetIgnoreRagDoll							()																							= 0;
 	virtual		const CLBits&					collide_bits								()const 																					= 0;
 	virtual		const _flags<CLClassBits>&		collide_class_bits 							()const 																					= 0;
+    virtual _flags<CLClassBits>& collide_class_bits() = 0;
 	virtual			void						CreateShellAnimator							( CInifile const * ini, LPCSTR section )															= 0;
 	virtual			void						SetIgnoreAnimated							()																							= 0;
 //	virtual			bool						Animated									()																							= 0;

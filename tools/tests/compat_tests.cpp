@@ -314,6 +314,16 @@ int main(int argc, char** argv)
             config_output << '\n';
         }
         check(config_output.good(), "effective Anomaly/MO2 configuration exported for parameter audit");
+        // Keep the exact VFS winner for diagnosing packed script conflicts.
+        if (auto* reader = FS.r_open("$game_scripts$", "bind_monster.script"))
+        {
+            string_path script_path;
+            FS.update_path(script_path, "$app_data_root$", "ixray_effective_bind_monster.script");
+            std::ofstream script_output(script_path, std::ios::binary);
+            script_output.write(static_cast<const char*>(reader->pointer()), reader->length());
+            check(script_output.good(), "effective packed monster binder exported");
+            FS.r_close(reader);
+        }
         string_path output;
         FS.update_path(output, "$app_data_root$", "mo2_vfs_verified.txt");
         std::ofstream file(output);

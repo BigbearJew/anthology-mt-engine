@@ -117,6 +117,7 @@ public:
 
 	virtual		const CLBits&					collide_bits								()const { return CPHObject::collide_bits();};
 	virtual		const _flags<CLClassBits>&		collide_class_bits 							()const {return CPHObject::collide_class_bits(); }																	
+    _flags<CLClassBits>& collide_class_bits() override { return CPHObject::collide_class_bits(); }
 
 	virtual void			setMass					(float M)									;
 

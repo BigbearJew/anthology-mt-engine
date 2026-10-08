@@ -24,6 +24,7 @@
 #include "physics_shell_scripted.h"
 #include "helicopter.h"
 #include "HangingLamp.h"
+#include "CustomZone.h"
 #include "holder_custom.h"
 #include "script_zone.h"
 #include "relation_registry.h"
@@ -47,6 +48,12 @@
 
 namespace
 {
+void set_anomaly_position(CScriptGameObject* self, const Fvector& position)
+{
+    auto* zone = self ? smart_cast<CCustomZone*>(&self->object()) : nullptr;
+    if (zone) zone->MoveScript(position);
+}
+
 CWeapon* cast_anomaly_weapon(CScriptGameObject* self)
 {
     return self ? self->object().cast_weapon() : nullptr;
@@ -66,6 +73,17 @@ IKinematics* anomaly_bone_model(CScriptGameObject* self, bool hud)
     if (self->object().cast_actor() && g_player_hud && g_player_hud->GetModel())
         return g_player_hud->GetModel()->dcast_PKinematics();
     return nullptr;
+}
+Fvector anomaly_bone_position_index(CScriptGameObject* self, u16 bone)
+{
+    auto* model = anomaly_bone_model(self, false);
+    if (!model) return Fvector().set(0.f, 0.f, 0.f);
+    // Anomaly uses BI_NONE to request the root bone.
+    if (bone == BI_NONE) bone = model->LL_GetBoneRoot();
+    if (bone >= model->LL_BoneCount()) return self->object().Position();
+    Fmatrix transform;
+    transform.mul_43(self->object().XFORM(), model->LL_GetBoneInstance(bone).mTransform);
+    return transform.c;
 }
 void set_anomaly_bone_visible(CScriptGameObject* self, LPCSTR name,
     bool visible, bool recursive, bool hud)
@@ -216,6 +234,7 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		.def("set_item",					(void (CScriptGameObject::*)(MonsterSpace::EObjectAction, CScriptGameObject *, u32, u32))(&CScriptGameObject::set_item))
 
 		.def("bone_position",				&CScriptGameObject::bone_position)
+		.def("bone_position", &anomaly_bone_position_index)
 
 		.def("is_body_turning",				&CScriptGameObject::is_body_turning)
 
@@ -385,6 +404,7 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		//CustomZone
 		.def("set_restrictor_type",			&CScriptGameObject::SetRestrictionType) 
 		.def("get_restrictor_type",			&CScriptGameObject::GetRestrictionType)
+		.def("set_anomaly_position", &set_anomaly_position)
 		.def("enable_anomaly",              &CScriptGameObject::EnableAnomaly)
 		.def("disable_anomaly",             &CScriptGameObject::DisableAnomaly)
 		.def("get_anomaly_power",			&CScriptGameObject::GetAnomalyPower)
