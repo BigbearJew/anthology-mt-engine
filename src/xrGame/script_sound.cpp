@@ -64,3 +64,9 @@ void CScriptSound::PlayNoFeedback	(CScriptGameObject *object,	u32 flags/*!< Loop
 	THROW3						(m_sound._handle(),"There is no sound",*m_caSoundToPlay);
 	m_sound.play_no_feedback	((object) ? &object->object() : nullptr, flags,delay,&pos,&vol);
 }
+
+void CScriptSound::PlayNoFeedback(CScriptGameObject* object, u32 flags, float delay, Fvector pos, float vol, float frequency)
+{
+	THROW3(m_sound._handle(), "There is no sound", *m_caSoundToPlay);
+	m_sound.play_no_feedback(object ? &object->object() : nullptr, flags, delay, &pos, &vol, &frequency);
+}

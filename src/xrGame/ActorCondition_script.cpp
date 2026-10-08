@@ -122,6 +122,8 @@ void CActorCondition::script_register(lua_State *L)
 			],
 
 			class_<CActorCondition, CEntityCondition>("CActorCondition")
+			.def("SetPsyBar", &CActorCondition::SetPsyBar)
+			.def("GetPsyBar", &CActorCondition::GetPsyBar)
 			//.def(constructor<>())
 			.def("ClearAllBoosters", &ClearAllBoosters)
 			.def("ApplyBooster", &ApplyBooster_script)

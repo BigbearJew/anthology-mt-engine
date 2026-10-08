@@ -315,7 +315,7 @@ void CUIHudStatesWnd::Update()
 void CUIHudStatesWnd::UpdateHealth( CActor* actor )
 {
     if (m_ui_psy_bar && m_ui_psy_bar->IsShown() && !m_ui_psy_bar->IsExpressionSystem)
-        m_ui_psy_bar->SetProgressPos(actor->conditions().GetPsyHealth() * 100.f);
+        m_ui_psy_bar->SetProgressPos(actor->conditions().GetPsyBar() * 100.f);
 	if (!m_ui_health_bar->IsExpressionSystem)
 	{
 		float cur_health = actor->GetfHealth();

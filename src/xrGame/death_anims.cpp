@@ -20,13 +20,13 @@ rnd_motion*	rnd_motion::	setup		( IKinematicsAnimated* k, LPCSTR s )
 	VERIFY( k );
 	VERIFY( s );
 
-	const u16 nb =( u16 )_GetItemCount( s );
-	for(u16 i = 0 ; nb > i ; ++i )
+	const int nb = _GetItemCount(s);
+	for (int i = 0; i < nb; ++i)
 	{
-		string64 n;
-		_GetItem( s, i, n );
-		MotionID m = k->LL_MotionID( n );
-		VERIFY2( m.valid(), make_string<const char*>( "motion: %s not found!", n ) );
+		xr_string n;
+		_GetItem(s, i, n);
+		MotionID m = k->LL_MotionID(n.c_str());
+		VERIFY2(m.valid(), make_string<const char*>("motion: %s not found!", n.c_str()));
 		motions.push_back( m );
 	}
 	return this;

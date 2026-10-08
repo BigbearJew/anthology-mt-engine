@@ -6,8 +6,11 @@
 #include "xrScripts/script_engine.h"
 #include "xrScripts/dxml_bridge.h"
 #include "xrScripts/exports/script_fvector.h"
+#include "xrScripts/exports/script_ini_file.h"
+#include "xrScripts/exports/script_net_packet.h"
 #include "xrCore/FormatParsers/XML/xrXMLParser.h"
 #include "Layers/xrRender/ThmChunk.h"
+#include "Layers/xrRender/TextureMipSelection.h"
 #include <fstream>
 #include <luabind/luabind.hpp>
 
@@ -53,6 +56,14 @@ static void with_ini(const char* text, Test test)
 
 int main(int argc, char** argv)
 {
+    check(SelectTextureMip(512, 256, 10, 2, true) == 2,
+        "texture quality selects existing aligned mips");
+    check(SelectTextureMip(256, 2, 9, 2, false) == 0 && SelectTextureMip(9, 5, 4, 1, false) == 0,
+        "thin and odd DDS dimensions are never rounded beyond their pixel buffers");
+    check(SelectTextureMip(12, 12, 4, 1, true) == 0 && SelectTextureMip(10, 10, 4, 1, false) == 1,
+        "BC top-level alignment is respected without changing uncompressed dimensions");
+    check(SelectTextureMip(512, 512, 1, 2, true) == 0 && SelectTextureMip(8, 8, 4, 99, true) == 1,
+        "texture mip selection stays inside supplied chain and minimum size");
     const bool vfs = argc > 1 && strcmp(argv[1], "--vfs") == 0;
     const bool lua_test = argc > 1 && strcmp(argv[1], "--lua") == 0;
     Core._initialize("AnthologyIXRayTests", nullptr, vfs || lua_test,
@@ -164,6 +175,18 @@ int main(int argc, char** argv)
             luabind::allocator_parameter = nullptr;
             luabind::open(scripts.lua());
             CScriptFvector::script_register(scripts.lua());
+            CScriptIniFile::script_register(scripts.lua());
+            CScriptNetPacket::script_register(scripts.lua());
+            check(luaL_dostring(scripts.lua(),
+                "local p=net_packet(); p:w_vec3(vector():set(3,4,5)); p:r_seek(0); "
+                "local v=p:r_vec3(); assert(v.x==3 and v.y==4 and v.z==5 and p:r_tell()==12); "
+                "p:r_seek(0); local out=vector(); p:r_vec3(out); assert(out.z==5 and p:r_tell()==12)") == 0,
+                "network packet vector reader supports return-value and explicit destination forms");
+            check(luaL_dostring(scripts.lua(),
+                "local ini=create_ini_file('[probe]\\nanswer=42\\n'); "
+                "local ok,k,v=ini:r_line('probe',0); assert(ok and k=='answer' and v=='42'); "
+                "local ok2,k2,v2=ini:r_line('probe',0,'',''); assert(ok2 and k2==k and v2==v)") == 0,
+                "INI line reader accepts both Anomaly short and native output-argument forms");
             check(luaL_dostring(scripts.lua(),
                 "local v=vector():set(1,2,3); assert(v:add(4,5,6)==v); "
                 "assert(v.x==5 and v.y==7 and v.z==9); "

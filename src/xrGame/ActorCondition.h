@@ -34,7 +34,11 @@ private:
 			void 		UpdateThirst				();
 			void 		UpdateSleepiness			();
 	virtual void		UpdateRadiation				();
+private:
+	float m_scriptPsyBar = -1.f; // Transient HUD value; gameplay psy health stays native.
 public:
+	float GetPsyBar() const { return m_scriptPsyBar < 0.f ? GetPsyHealth() : m_scriptPsyBar; }
+	void SetPsyBar(float value) { if (_valid(value)) { clamp(value, 0.f, 1.f); m_scriptPsyBar = value; } }
 						CActorCondition				(CActor *object);
 	virtual				~CActorCondition			();
 

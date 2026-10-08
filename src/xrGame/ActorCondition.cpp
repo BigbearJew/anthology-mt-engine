@@ -649,6 +649,7 @@ void CActorCondition::save(NET_Packet &output_packet)
 
 void CActorCondition::load(IReader &input_packet)
 {
+	m_scriptPsyBar = -1.f;
 	inherited::load		(input_packet);
 	load_data			(Alcohol.Current, input_packet);
 	load_data			(m_condition_flags, input_packet);
@@ -682,6 +683,7 @@ void CActorCondition::load(IReader &input_packet)
 
 void CActorCondition::reinit()
 {
+	m_scriptPsyBar = -1.f;
 	inherited::reinit();
 	m_bLimping = false;
 	Satiety.Current = 1.0f;

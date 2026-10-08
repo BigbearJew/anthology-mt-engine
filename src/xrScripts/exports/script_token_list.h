@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "../xrScripts/script_export_space.h"
+#include "../script_export_space.h"
 
 class SCRIPTS_API CScriptTokenList 
 {

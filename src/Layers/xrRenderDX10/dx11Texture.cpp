@@ -1,6 +1,7 @@
 #include "stdafx.h"
 
 #include <memory>
+#include "../xrRender/TextureMipSelection.h"
 #include <DirectXTex.h>
 #include <magic_enum/magic_enum.hpp>
 
@@ -64,20 +65,6 @@ u32 calc_texture_size(int lod, u32 mip_cnt, u32 orig_size)
 		res -= res / 1.333f;
 	}
 	return iFloor(res);
-}
-
-IC void	Reduce(size_t& w, size_t& h, size_t& l, int& skip)
-{
-	while ((l > 1) && (w > 4) && (h > 4) && skip)
-	{
-		w /= 2;
-		h /= 2;
-		l -= 1;
-
-		skip--;
-	}
-	if (w < 4) w = 4;
-	if (h < 4) h = 4;
 }
 
 IC void PrintLoadTextureError(HRESULT hr, TexMetadata& imageInfo, const char* fname, int img_loaded_lod, D3D11_USAGE usage)
@@ -336,13 +323,31 @@ ID3DBaseTexture* CRender::texture_load(LPCSTR fRName, u32& ret_msize, bool bStag
 				Msg("* Legacy DDS decoded for DX11: %s (%ux%u)", fname,
 					u32(imageInfo.width), u32(imageInfo.height));
 			}
-			int mip_lod = 0;
-			if (img_loaded_lod && imageInfo.mipLevels > 1)
-			{
-				const int oldMipmapCnt = imageInfo.mipLevels;
-				Reduce(imageInfo.width, imageInfo.height, imageInfo.mipLevels, img_loaded_lod);
-				mip_lod = oldMipmapCnt - imageInfo.mipLevels;
-			}
+			const size_t mip_lod = imageInfo.arraySize == 1 ? SelectTextureMip(
+                imageInfo.width, imageInfo.height, imageInfo.mipLevels,
+                img_loaded_lod, IsCompressed(imageInfo.format)) : 0;
+            const Image* top = scratchImage.GetImage(mip_lod, 0, 0);
+            R_ASSERT2(top, fname);
+            imageInfo.width = top->width;
+            imageInfo.height = top->height;
+            imageInfo.mipLevels -= mip_lod;
+            img_loaded_lod = int(mip_lod);
+            // Validate each supplied 2D mip before the driver reads its pixels.
+            for (size_t item = 0; item < imageInfo.arraySize; ++item)
+            {
+                size_t width = imageInfo.width, height = imageInfo.height;
+                for (size_t mip = 0; mip < imageInfo.mipLevels; ++mip)
+                {
+                    const Image* image = scratchImage.GetImage(mip + mip_lod, item, 0);
+                    size_t row = 0, slice = 0;
+                    const HRESULT pitch = ComputePitch(imageInfo.format, width, height, row, slice);
+                    R_ASSERT2(SUCCEEDED(pitch) && image && image->pixels &&
+                        image->width == width && image->height == height &&
+                        image->rowPitch >= row && image->slicePitch >= slice, fname);
+                    width = width > 1 ? width / 2 : 1;
+                    height = height > 1 ? height / 2 : 1;
+                }
+            }
 
 			hr = CreateTextureEx(RDevice, scratchImage.GetImages() + mip_lod, scratchImage.GetImageCount() - mip_lod, imageInfo,
 				usage, bindFlags, cpuAccessFlags, miscFlags, CREATETEX_FLAGS::CREATETEX_DEFAULT, &pTexture2D);
