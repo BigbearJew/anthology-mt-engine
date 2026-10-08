@@ -7,6 +7,34 @@
 namespace
 {
 	CXml::ReadCallback xml_read_callback = nullptr;
+
+	void NormalizeLegacyDeclaration(xr_string& source)
+	{
+		// TinyXML accepted addon credit comments before the XML declaration.
+		// TinyXML2 requires the declaration first; preserve the comments and payload bytes.
+		const size_t begin = source.compare(0, 3, "\xef\xbb\xbf") == 0 ? 3 : 0;
+		size_t cursor = begin;
+		bool comment = false;
+		for (;;)
+		{
+			cursor = source.find_first_not_of(" \t\r\n", cursor);
+			if (cursor == xr_string::npos) return;
+			if (source.compare(cursor, 4, "<!--") != 0) break;
+			const size_t end = source.find("-->", cursor + 4);
+			if (end == xr_string::npos) return;
+			comment = true;
+			cursor = end + 3;
+		}
+		if (!comment || source.compare(cursor, 5, "<?xml") != 0 ||
+			cursor + 5 >= source.size() ||
+			(source[cursor + 5] != ' ' && source[cursor + 5] != '\t' &&
+			 source[cursor + 5] != '\r' && source[cursor + 5] != '\n')) return;
+		const size_t end = source.find("?>", cursor + 5);
+		if (end == xr_string::npos) return;
+		const xr_string declaration = source.substr(cursor, end + 2 - cursor);
+		source.erase(cursor, declaration.size());
+		source.insert(begin, declaration);
+	}
 }
 
 void CXml::SetReadCallback(ReadCallback callback)
@@ -146,6 +174,7 @@ void CXml::Save()
 //инициализация и загрузка XML файла
 bool CXml::Load(LPCSTR path, LPCSTR xml_filename)
 {
+	ClearInternal();
 	xr_strcpy(m_xml_file_name, xml_filename);
 	// Load and parse xml file
 
@@ -158,7 +187,9 @@ bool CXml::Load(LPCSTR path, LPCSTR xml_filename)
 	W.w_stringZ("");
 	FS.r_close(F);
 
-	m_Doc.Parse((LPCSTR)W.pointer());
+	xr_string xmlSource((LPCSTR)W.pointer());
+	NormalizeLegacyDeclaration(xmlSource);
+	m_Doc.Parse(xmlSource.c_str());
 
 	// Asure initial
 	CXMLOverride XMLOverrider;
@@ -175,7 +206,9 @@ bool CXml::Load(LPCSTR path, LPCSTR xml_filename)
 			FS.r_close(AF);
 
 			tinyxml2::XMLDocument ADoc; 
-			ADoc.Parse((LPCSTR)AW.pointer());
+			xr_string overrideSource((LPCSTR)AW.pointer());
+			NormalizeLegacyDeclaration(overrideSource);
+			ADoc.Parse(overrideSource.c_str());
 			XMLOverrider.GenerateNewDoc(m_Doc, ADoc);
 		}
 	}
@@ -191,7 +224,7 @@ bool CXml::Load(LPCSTR path, LPCSTR xml_filename)
 	{
 		// DXML sees the document after native IX-Ray overrides have been applied.
 		tinyxml2::XMLPrinter printer;
-		LPCSTR source = (LPCSTR)W.pointer();
+		LPCSTR source = xmlSource.c_str();
 		if (!AsureData.empty())
 		{
 			m_Doc.Print(&printer);
@@ -200,6 +233,7 @@ bool CXml::Load(LPCSTR path, LPCSTR xml_filename)
 		xr_string transformed;
 		if (xml_read_callback(m_xml_file_name, source, transformed))
 		{
+			NormalizeLegacyDeclaration(transformed);
 			tinyxml2::XMLDocument replacement;
 			if (replacement.Parse(transformed.c_str()) == tinyxml2::XML_SUCCESS && replacement.FirstChildElement())
 				replacement.DeepCopy(&m_Doc);
@@ -210,7 +244,7 @@ bool CXml::Load(LPCSTR path, LPCSTR xml_filename)
 	m_pLocalRoot = nullptr;
 	m_root = m_Doc.FirstChildElement();
 	
-	return true;
+	return m_root != nullptr;
 }
 
 XML_NODE* CXml::NavigateToNode(XML_NODE* start_node, LPCSTR  path, int node_index)

@@ -298,6 +298,18 @@ int main(int argc, char** argv)
             g_pScriptEngine = nullptr;
             check(!CXml::HasReadCallback() && xml.Load("$game_config$", "ui", "dxml_probe.xml") && xml.ReadInt("value", 0, -1) == 5,
                 "detaching Lua callback preserves native XML overrides");
+            check(xml.Load("$game_config$", "ui", "legacy_declaration.xml") && xml.ReadInt("value", 0, -1) == 17 &&
+                strcmp(xml.Read("text", 0, ""), "\xd1\xed\xe5\xe3") == 0,
+                "legacy credit comments before declaration preserve BOM and CP1251 payload");
+            xml.SetLocalRoot(xml.NavigateToNode("value"));
+            check(!xml.Load("$game_config$", "ui", "nested_declaration.xml") &&
+                !xml.GetRoot() && !xml.GetLocalRoot(),
+                "nested declaration remains invalid and failed reload clears stale XML roots");
+            check(!xml.Load("$game_config$", "ui", "comment_only.xml") && !xml.GetRoot(),
+                "comment-only XML cannot report a loaded document");
+            check(xml.Load("$game_config$", "ui", "xml_text.xml") &&
+                strcmp(xml.Read("text", 0, ""), "<!-- credits --><?xml version=\"1.0\"?>") == 0,
+                "declaration-like text inside CDATA remains unchanged");
         }
     }
     if (vfs)
