@@ -527,41 +527,23 @@ luabind::object CScriptStorage::name_space(LPCSTR namespace_name)
 	}
 }
 
-struct raii_guard 
+bool CScriptStorage::print_output(lua_State* L, LPCSTR caScriptFileName, int errorCode)
 {
-	int m_error_code;
-	LPCSTR const& m_error_description;
-	raii_guard(const raii_guard& other) = delete;
-	raii_guard& operator=(const raii_guard& other) = delete;
-	raii_guard	(int error_code, LPCSTR const& m_description) : m_error_code(error_code), m_error_description(m_description) {}
-	~raii_guard()
-	{
-		if (!m_error_code)
-			return;
-
-		R_ASSERT2(!m_error_code, m_error_description);
-	}
-}; // struct raii_guard
-
-bool CScriptStorage::print_output(lua_State *L, LPCSTR caScriptFileName, int iErorCode)
-{	
-	if (iErorCode)
-		print_error		(L,iErorCode);
-
-#if 1
-	lua_getglobal(L, "debug"); // stack: err debug
-	lua_getfield(L, -1, "traceback"); // stack: err debug debug.traceback
-
-	if (lua_pcall(L, 0, 1, 0)) {
-		const char* err = lua_tostring(L, -1);
-		Msg("[LUA] Error in debug.traceback() call: %s\n", err);
-	}
-#endif
-
-	LPCSTR err = "see call_stack for details!";
-	raii_guard guard(iErorCode, err);
-
-	return true;
+    if (!errorCode) return true;
+    print_error(L, errorCode);
+    const int top = lua_gettop(L);
+    const xr_string message = lua_isstring(L, -1) ? lua_tostring(L, -1) : "Lua callback failed without an error string";
+    Msg("[LUA] Error: %s", message.c_str());
+    lua_getglobal(L, "debug");
+    if (lua_istable(L, -1))
+    {
+        lua_getfield(L, -1, "traceback");
+        if (lua_isfunction(L, -1) && lua_pcall(L, 0, 1, 0) == 0 && lua_isstring(L, -1))
+            Msg("%s", lua_tostring(L, -1));
+    }
+    lua_settop(L, top);
+    R_ASSERT2(!errorCode, message.c_str());
+    return false;
 }
 
 void CScriptStorage::print_error(lua_State *L, int iErrorCode)

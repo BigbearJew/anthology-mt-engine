@@ -314,7 +314,9 @@ class_<CScriptGameObject> script_register_game_object1(class_<CScriptGameObject>
 
 		.def("head_orientation",			&CScriptGameObject::head_orientation)
 
-		.def("set_actor_position",			&CScriptGameObject::SetActorPosition)
+		.def("set_actor_position", static_cast<void (CScriptGameObject::*)(Fvector)>(&CScriptGameObject::SetActorPosition))
+		.def("set_actor_position", static_cast<void (CScriptGameObject::*)(Fvector, bool)>(&CScriptGameObject::SetActorPosition))
+		.def("set_actor_position", static_cast<void (CScriptGameObject::*)(Fvector, bool, bool)>(&CScriptGameObject::SetActorPosition))
 		.def("set_actor_direction",			&CScriptGameObject::SetActorDirection)
 		.def("camera_move",					&CScriptGameObject::CameraMove) // FNAS
 		.def("switch_torch",				&CScriptGameObject::SwitchTorch) // FNAS

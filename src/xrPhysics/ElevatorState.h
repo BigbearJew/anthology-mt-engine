@@ -14,6 +14,7 @@ public:
 
 private:
 	Estate m_state;
+    bool m_allow_climbing = true;
 
 	struct  SEnertionState {
 		float dist;
@@ -27,6 +28,7 @@ CPHCharacter	*m_character;
 Fvector			m_start_position;//for depart state
 u32				m_start_time;
 public: 
+    void AllowClimbing(bool allow) override { m_allow_climbing = allow; }
 						CElevatorState					();
 			void		PhTune							(float step)																			;
 			void		SetCharacter					(CPHCharacter *character);

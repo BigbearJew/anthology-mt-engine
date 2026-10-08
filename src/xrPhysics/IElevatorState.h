@@ -15,6 +15,7 @@ class IPhysicsShellHolder;
 class IElevatorState
 {
 public:
+    virtual void AllowClimbing(bool allow) = 0;
 	virtual Estate	State		()							= 0;
 	virtual	void	NetRelcase	( IPhysicsShellHolder* O )	= 0;
 protected:

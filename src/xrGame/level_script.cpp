@@ -10,6 +10,9 @@
 #include "pch_script.h"
 #include "Level.h"
 #include "Actor.h"
+#include "AnomalyScriptCamera.h"
+void RegisterAnomalyScriptWeather(lua_State* L);
+void RegisterAnomalyScriptHud(lua_State* L);
 #include "script_game_object.h"
 #include "patrol_path_storage.h"
 #include "xrServer.h"
@@ -39,6 +42,8 @@
 #include "xrServer_Objects_ALife_Monsters.h"
 #include "ActorCondition.h"
 #include "player_hud.h"
+
+static player_hud* get_anomaly_player_hud() { return g_player_hud; }
 #include "../xrEngine/XR_IOConsole.h"
 #include "Inventory.h"
 #include "ShootingObject.h"
@@ -54,6 +59,30 @@
 #include "material_manager.h"
 
 using namespace luabind;
+
+static void iterate_nearby(const Fvector& position, float radius, const luabind::functor<bool>& callback, bool sorted)
+{
+    if (!g_pGameLevel || !_valid(position) || !_valid(radius) || radius <= 0.f) return;
+    xr_vector<CObject*> nearby;
+    Level().ObjectSpace.GetNearest(nearby, position, radius, nullptr);
+    xr_vector<std::pair<float, u16>> ids;
+    ids.reserve(nearby.size());
+    for (auto* object : nearby)
+        if (object && object->cast_game_object())
+            ids.emplace_back(object->Position().distance_to_sqr(position), object->ID());
+    if (sorted) std::sort(ids.begin(), ids.end());
+    // Lua may remove objects while iterating. Resolve the snapshot IDs before each call.
+    for (const auto& entry : ids)
+    {
+        auto* object = Level().Objects.net_Find(entry.second);
+        auto* game_object = object ? object->cast_game_object() : nullptr;
+        if (game_object && callback(game_object->lua_game_object())) break;
+    }
+}
+static void iterate_nearest(const Fvector& position, float radius, const luabind::functor<bool>& callback)
+{ iterate_nearby(position, radius, callback, true); }
+static void iterate_nearest_unsorted(const Fvector& position, float radius, const luabind::functor<bool>& callback)
+{ iterate_nearby(position, radius, callback, false); }
 
 void show_legs(bool val)
 {
@@ -675,6 +704,27 @@ float add_cam_effector(LPCSTR fn, int id, bool cyclic, LPCSTR cb_func)
 	Actor()->Cameras().AddCamEffector(e);
 	return						e->GetAnimatorLength();
 }
+
+static float add_cam_effector_hud(LPCSTR fn, int id, bool cyclic, LPCSTR callback, float fov, bool hud)
+{
+    auto* actor = Actor();
+    if (!actor || !fn || !*fn || !_valid(fov)) return 0.f;
+    auto* effector = new CAnimatorCamEffectorScriptCB(callback ? callback : "");
+    if (fov != 0.f)
+    {
+        effector->m_bAbsolutePositioning = true;
+        effector->m_fov = fov;
+    }
+    effector->SetHudAffect(hud);
+    effector->SetType((ECamEffectorType)id);
+    effector->SetCyclic(cyclic);
+    effector->Start(fn);
+    const float length = effector->GetAnimatorLength();
+    actor->Cameras().AddCamEffector(effector);
+    return length;
+}
+static float add_cam_effector_fov(LPCSTR fn, int id, bool cyclic, LPCSTR callback, float fov)
+{ return add_cam_effector_hud(fn, id, cyclic, callback, fov, true); }
 
 float add_cam_effector_without_fov(LPCSTR fn, int id, bool cyclic, LPCSTR cb_func)
 {
@@ -1488,6 +1538,12 @@ LPCSTR GetActorMaterialPairName()
 #pragma optimize("s",on)
 void CLevel::script_register(lua_State *L)
 {
+	RegisterAnomalyScriptCamera(L);
+	RegisterAnomalyScriptWeather(L);
+	RegisterAnomalyScriptHud(L);
+#ifdef DEBUG_DRAW
+	RegisterAnomalyScriptDebug(L);
+#endif
 	class_<CEnvDescriptor>("CEnvDescriptor")
 		.def_readonly("fog_density",			&CEnvDescriptor::fog_density)
 		.def_readonly("far_plane",				&CEnvDescriptor::far_plane),
@@ -1498,7 +1554,9 @@ void CLevel::script_register(lua_State *L)
 	module(L,"level")
 	[
 		// obsolete\deprecated
-		def("object_by_id",						get_object_by_id),
+		def("iterate_nearest", &iterate_nearest),
+        def("iterate_nearest_unsorted", &iterate_nearest_unsorted),
+        def("object_by_id",						get_object_by_id),
 #ifdef DEBUG
 		def("debug_object",						get_object_by_name),
 		def("debug_actor",						tpfGetActor),
@@ -1588,7 +1646,9 @@ void CLevel::script_register(lua_State *L)
 		def("physics_world",					&physics_world_scripted),
 		def("get_snd_volume",					&get_snd_volume),
 		def("set_snd_volume",					&set_snd_volume),
-		def("add_cam_effector",					&add_cam_effector),
+		def("add_cam_effector", &add_cam_effector_hud),
+        def("add_cam_effector", &add_cam_effector_fov),
+        def("add_cam_effector",					&add_cam_effector),
 		def("add_cam_effector2",				&add_cam_effector2),
 		def("add_cam_effector2",				&add_cam_effector_without_fov),
 		def("remove_cam_effector",				&remove_cam_effector),
@@ -1663,6 +1723,14 @@ void CLevel::script_register(lua_State *L)
 		def("set",						&level_nearest::Set),
 		def("size",						&level_nearest::Size),
 		def("get",						&level_nearest::Get)
+	];
+
+	module(L)
+	[
+		class_<player_hud>("CPlayerHud")
+			.def("set_hands", &player_hud::load_script)
+			.def("reset_hands", &player_hud::reset_model_script),
+		def("get_player_hud", &get_anomaly_player_hud)
 	];
 
 	module(L, "player_hud")

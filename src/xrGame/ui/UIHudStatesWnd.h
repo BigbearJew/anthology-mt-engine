@@ -77,6 +77,7 @@ public:
 	CUIProgressBar*		m_ui_health_bar = nullptr;
 	CUIProgressBar*		m_ui_armor_bar = nullptr;
 	CUIProgressBar*		m_ui_stamina_bar = nullptr;
+    CUIProgressBar* m_ui_psy_bar = nullptr;
 	CUIStatic*			m_ui_weapon_icon = nullptr;
 	CUIStatic*			m_back = nullptr;
 	CUITextWnd*			m_ui_weapon_third_ammo = nullptr; //Alundaio

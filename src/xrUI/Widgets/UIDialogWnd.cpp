@@ -11,7 +11,10 @@ CUIDialogWnd:: CUIDialogWnd()
 }
 
 CUIDialogWnd::~CUIDialogWnd()
-{}
+{
+	if (m_pParentHolder)
+		m_pParentHolder->OnDialogDestroyed(this);
+}
 
 void CUIDialogWnd::Show(bool status)
 {

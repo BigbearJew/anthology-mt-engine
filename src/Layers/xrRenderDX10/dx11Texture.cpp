@@ -316,15 +316,35 @@ ID3DBaseTexture* CRender::texture_load(LPCSTR fRName, u32& ret_msize, bool bStag
 
 				return nullptr;
 			}
+			// Legacy Anomaly DDS files can have a BC top mip not aligned to 4x4.
+			// D3D11 cannot allocate that resource. Decode without resizing so UI
+			// coordinates and particle UVs still address the original dimensions.
+			if (IsCompressed(imageInfo.format) && ((imageInfo.width & 3) || (imageInfo.height & 3)))
+			{
+				ScratchImage decoded;
+				hr = Decompress(scratchImage.GetImages(), scratchImage.GetImageCount(),
+					imageInfo, DXGI_FORMAT_UNKNOWN, decoded);
+				if (FAILED(hr))
+				{
+					PrintLoadTextureError(hr, imageInfo, fname, 0, usage);
+					FS.r_close(reader);
+					return nullptr;
+				}
+				scratchImage = std::move(decoded);
+				imageInfo = scratchImage.GetMetadata();
+				img_size = u32(scratchImage.GetPixelsSize());
+				Msg("* Legacy DDS decoded for DX11: %s (%ux%u)", fname,
+					u32(imageInfo.width), u32(imageInfo.height));
+			}
 			int mip_lod = 0;
-			if (img_loaded_lod)
+			if (img_loaded_lod && imageInfo.mipLevels > 1)
 			{
 				const int oldMipmapCnt = imageInfo.mipLevels;
 				Reduce(imageInfo.width, imageInfo.height, imageInfo.mipLevels, img_loaded_lod);
 				mip_lod = oldMipmapCnt - imageInfo.mipLevels;
 			}
 
-			hr = CreateTextureEx(RDevice, scratchImage.GetImages() + mip_lod, scratchImage.GetImageCount(), imageInfo,
+			hr = CreateTextureEx(RDevice, scratchImage.GetImages() + mip_lod, scratchImage.GetImageCount() - mip_lod, imageInfo,
 				usage, bindFlags, cpuAccessFlags, miscFlags, CREATETEX_FLAGS::CREATETEX_DEFAULT, &pTexture2D);
 			FS.r_close(reader);
 			scratchImage.Release();

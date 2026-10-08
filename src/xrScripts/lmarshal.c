@@ -106,6 +106,7 @@ static void mar_encode_value(lua_State* L, mar_Buffer* buf, int val, size_t* idx
 {
     size_t l;
     int val_type = lua_type(L, val);
+    luaL_checkstack(L, 8, "marshal nesting is too deep");
     lua_pushvalue(L, val);
 
     buf_write(L, (void*)&val_type, MAR_CHR, buf);
@@ -302,35 +303,50 @@ static int mar_encode_table(lua_State* L, mar_Buffer* buf, size_t* idx)
     return 1;
 }
 
-#define mar_incr_ptr(l) \
-    if ((size_t)(((*p)-buf)+(l)) > len) luaL_error(L, "bad code"); (*p) += (l);
+#define mar_check_len(n) \
+    if ((size_t)((*p)-buf) > len || (size_t)(n) > len - (size_t)((*p)-buf)) \
+        luaL_error(L, "truncated marshal data");
+
+#define mar_incr_ptr(n) \
+    mar_check_len(n); (*p) += (n);
 
 #define mar_next_len(l,T) \
-    if ((size_t)((*p)-buf)+sizeof(T) > len) luaL_error(L, "bad code"); \
-    l = *(T*)*p; (*p) += sizeof(T);
+    mar_check_len(sizeof(T)); \
+    { T value; memcpy(&value, *p, sizeof(T)); l = value; } (*p) += sizeof(T);
 
 static void mar_decode_value
 (lua_State* L, const char* buf, size_t len, const char** p, size_t* idx)
 {
     size_t l;
-    char val_type = **p;
+    char val_type;
+    luaL_checkstack(L, 8, "marshal nesting is too deep");
+    mar_check_len(MAR_CHR);
+    val_type = **p;
     mar_incr_ptr(MAR_CHR);
     switch (val_type) {
     case LUA_TBOOLEAN:
+        mar_check_len(MAR_CHR);
         lua_pushboolean(L, *(char*)*p);
         mar_incr_ptr(MAR_CHR);
         break;
-    case LUA_TNUMBER:
-        lua_pushnumber(L, *(lua_Number*)*p);
+    case LUA_TNUMBER: {
+        lua_Number number;
+        mar_check_len(MAR_I64);
+        memcpy(&number, *p, MAR_I64);
+        lua_pushnumber(L, number);
         mar_incr_ptr(MAR_I64);
         break;
+    }
     case LUA_TSTRING:
         mar_next_len(l, uint32_t);
+        mar_check_len(l);
         lua_pushlstring(L, *p, l);
         mar_incr_ptr(l);
         break;
     case LUA_TTABLE: {
-        char tag = *(char*)*p;
+        char tag;
+        mar_check_len(MAR_CHR);
+        tag = *(char*)*p;
         mar_incr_ptr(MAR_CHR);
         if (tag == MAR_TREF) {
             int ref;
@@ -339,6 +355,7 @@ static void mar_decode_value
         }
         else if (tag == MAR_TVAL) {
             mar_next_len(l, uint32_t);
+            mar_check_len(l);
             lua_newtable(L);
             lua_pushvalue(L, -1);
             lua_rawseti(L, SEEN_IDX, (int)((*idx)++));
@@ -347,6 +364,7 @@ static void mar_decode_value
         }
         else if (tag == MAR_TUSR) {
             mar_next_len(l, uint32_t);
+            mar_check_len(l);
             lua_newtable(L);
             mar_decode_table(L, *p, l, idx);
             lua_rawgeti(L, -1, 1);
@@ -365,7 +383,9 @@ static void mar_decode_value
         size_t nups;
         int i;
         mar_Buffer dec_buf;
-        char tag = *(char*)*p;
+        char tag;
+        mar_check_len(MAR_CHR);
+        tag = *(char*)*p;
         mar_incr_ptr(1);
         if (tag == MAR_TREF) {
             int ref;
@@ -374,23 +394,30 @@ static void mar_decode_value
         }
         else {
             mar_next_len(l, uint32_t);
+            mar_check_len(l);
             dec_buf.data = (char*)*p;
             dec_buf.size = l;
             dec_buf.head = l;
             dec_buf.seek = 0;
-            lua_load(L, (lua_Reader)buf_read, &dec_buf, "=marshal");
+            /* A failed load leaves an error string, not a callable closure.
+               In particular, Anomaly's LuaJIT v1 bytecode is incompatible
+               with this runtime's v2 bytecode. Never feed it to setupvalue. */
+            if (lua_load(L, (lua_Reader)buf_read, &dec_buf, "=marshal") != 0)
+                lua_error(L);
             mar_incr_ptr(l);
 
             lua_pushvalue(L, -1);
             lua_rawseti(L, SEEN_IDX, (int)((*idx)++));
 
             mar_next_len(l, uint32_t);
+            mar_check_len(l);
             lua_newtable(L);
             mar_decode_table(L, *p, l, idx);
             nups = lua_objlen(L, -1);
             for (i = 1; i <= nups; i++) {
                 lua_rawgeti(L, -1, i);
-                lua_setupvalue(L, -3, i);
+                if (!lua_setupvalue(L, -3, i))
+                    luaL_error(L, "invalid marshal function upvalue");
             }
             lua_pop(L, 1);
             mar_incr_ptr(l);
@@ -398,7 +425,9 @@ static void mar_decode_value
         break;
     }
     case LUA_TUSERDATA: {
-        char tag = *(char*)*p;
+        char tag;
+        mar_check_len(MAR_CHR);
+        tag = *(char*)*p;
         mar_incr_ptr(MAR_CHR);
         if (tag == MAR_TREF) {
             int ref;
@@ -407,6 +436,7 @@ static void mar_decode_value
         }
         else if (tag == MAR_TUSR) {
             mar_next_len(l, uint32_t);
+            mar_check_len(l);
             lua_newtable(L);
             mar_decode_table(L, *p, l, idx);
             lua_rawgeti(L, -1, 1);

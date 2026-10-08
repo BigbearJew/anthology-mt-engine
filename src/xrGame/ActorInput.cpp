@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "Actor.h"
+#include "AnomalyScriptCamera.h"
 #include "Torch.h"
 #include "trade.h"
 #include "../xrEngine/CameraBase.h"
@@ -925,7 +926,7 @@ void CActor::ActorUse()
 
 BOOL CActor::HUDview()const
 {
-	return IsFocused() && (cam_active == eacFirstEye) && ((!m_holder) || (m_holder && m_holder->allowWeapon() && m_holder->HUDView()));
+	return AnomalyCameraHudEnabled(this) && IsFocused() && (cam_active == eacFirstEye) && ((!m_holder) || (m_holder && m_holder->allowWeapon() && m_holder->HUDView()));
 }
 
 static	u16 SlotsToCheck [] = {

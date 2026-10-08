@@ -219,6 +219,8 @@ CCameraManager::CCameraManager(bool bApplyOnUpdate)
 
 CCameraManager::~CCameraManager()
 {
+	for (auto* effector : m_EffectorsCam_added_deffered)
+		xr_delete(effector);
 	for (EffectorCamIt it=m_EffectorsCam.begin(); it!=m_EffectorsCam.end(); it++ )
 		xr_delete(*it);
 	for (EffectorPPIt it=m_EffectorsPP.begin(); it!=m_EffectorsPP.end(); it++ )
@@ -229,8 +231,11 @@ CCameraManager::~CCameraManager()
 #endif
 }
 
-CEffectorCam* CCameraManager::GetCamEffector(ECamEffectorType type)	
-{ 
+CEffectorCam* CCameraManager::GetCamEffector(ECamEffectorType type, bool includeDeferred)
+{
+	if (includeDeferred)
+		for (auto* effector : m_EffectorsCam_added_deffered)
+			if (effector->eType == type) return effector;
 	for (EffectorCamIt it=m_EffectorsCam.begin(); it!=m_EffectorsCam.end(); it++ )
 	{
 		if ((*it)->eType == type)
@@ -263,8 +268,17 @@ void CCameraManager::UpdateDeffered()
 	m_EffectorsCam_added_deffered.clear();
 }
 
-void CCameraManager::RemoveCamEffector(ECamEffectorType type)
+void CCameraManager::RemoveCamEffector(ECamEffectorType type, bool includeDeferred)
 {
+	if (includeDeferred)
+	{
+		for (auto it = m_EffectorsCam_added_deffered.begin(); it != m_EffectorsCam_added_deffered.end();)
+		{
+			if ((*it)->eType != type) { ++it; continue; }
+			OnEffectorReleased(*it);
+			it = m_EffectorsCam_added_deffered.erase(it);
+		}
+	}
 	for (EffectorCamIt it=m_EffectorsCam.begin(); it!=m_EffectorsCam.end(); it++ )
 	{
 		if ((*it)->eType == type)

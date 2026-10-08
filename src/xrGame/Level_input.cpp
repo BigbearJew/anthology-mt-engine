@@ -111,9 +111,15 @@ extern float g_separate_radius;
 #include "ai_space.h"
 #include "../xrEngine/string_table.h"
 
+extern bool AnomalyOnlyMovementKeys();
+
 void CLevel::IR_OnKeyboardPress	(int key)
 {
 	auto _curr = get_binded_action(key);
+    if (AnomalyOnlyMovementKeys() && !(_curr < kCAM_1 || _curr == kWPN_FIRE ||
+        _curr == kPAUSE || _curr == kDROP || _curr == kSCREENSHOT || _curr == kQUIT ||
+        _curr == kCONSOLE || _curr == kQUICK_LOAD || _curr == kQUICK_SAVE)) return;
+
 	if (_curr != kNOTBINDED) {
 		if (is_block_action(static_cast<int>(_curr))) {
 			return;

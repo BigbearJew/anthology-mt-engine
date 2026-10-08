@@ -40,6 +40,12 @@ void CElevatorState::PhTune(float step)
 {	
 	VERIFY(m_character&&m_character->b_exist&&m_character->is_active());
 	if(!m_ladder)			return;
+    if (!m_allow_climbing)
+    {
+        if (m_state != clbNoLadder) UpdateDepart();
+        else m_ladder = nullptr;
+        return;
+    }
 	switch(m_state)
 	{
 	case	clbNone			:UpdateStNone()			;		break;			

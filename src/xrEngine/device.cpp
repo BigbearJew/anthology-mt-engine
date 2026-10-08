@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "ImGuiManager.h"
 
 #include "../xrCore/Collision/Frustum.h"
 
@@ -297,6 +298,11 @@ void CRenderDevice::on_idle		()
 				seqRender.Process(rp_Render);
 				if (psDeviceFlags.test(rsCameraPos) || psDeviceFlags.test(rsStatistic) || Statistic->errors.size())
 					Statistic->Show();
+
+				// Lua UI shares a VM with scheduled scripts and the parallel GC.
+				// Join after world rendering, before End() invokes Lua ImGui.
+				if (CImGuiManager::Instance().ScriptRenderCallback)
+					secondary_tasks.wait();
 
 				End();
 			}

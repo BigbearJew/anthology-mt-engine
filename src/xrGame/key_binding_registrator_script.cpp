@@ -15,12 +15,18 @@ BOOL key_state(int key)
 	return pInput->iGetAsyncKeyState(key);
 }
 
+static int primary_action_dik(EGameActions action)
+{
+	return get_action_dik(action);
+}
+
 #pragma optimize("s",on)
 void key_binding_registrator::script_register(lua_State *L)
 {
 	module(L)
 	[
 		def("bind_to_dik", &get_action_dik),
+		def("bind_to_dik", &primary_action_dik),
 		def("dik_to_keyname", &dik_to_keyname),
 		def("key_state", &key_state),
 		def("dik_to_bind",		&dik_to_bind),
@@ -267,7 +273,9 @@ void key_binding_registrator::script_register(lua_State *L)
                 value("DIK_ALTERASE", int(SDL_SCANCODE_ALTERASE)),
                 value("DIK_CANCEL", int(SDL_SCANCODE_CANCEL)),
                 value("DIK_CLEAR", int(SDL_SCANCODE_CLEAR)),
-                value("DIK_PRIOR", int(SDL_SCANCODE_PRIOR)),
+                value("DIK_PRIOR", int(SDL_SCANCODE_PAGEUP)),
+                value("DIK_NEXT", int(SDL_SCANCODE_PAGEDOWN)),
+                value("DIK_DECIMAL", int(SDL_SCANCODE_KP_PERIOD)),
                 value("DIK_RETURN2", int(SDL_SCANCODE_RETURN2)),
                 value("DIK_SEPARATOR", int(SDL_SCANCODE_SEPARATOR)),
                 value("DIK_OUT", int(SDL_SCANCODE_OUT)),

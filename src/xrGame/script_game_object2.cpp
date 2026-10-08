@@ -381,6 +381,17 @@ void CScriptGameObject::RestoreDefaultStartDialog()
 
 void CScriptGameObject::SetActorPosition(Fvector pos)
 {
+	SetActorPosition(pos, false, false);
+}
+
+void CScriptGameObject::SetActorPosition(Fvector pos, bool skipCollision)
+{
+	SetActorPosition(pos, skipCollision, false);
+}
+
+void CScriptGameObject::SetActorPosition(Fvector pos, bool skipCollision, bool keepSpeed)
+{
+	if (!_valid(pos)) return;
 	if (CActor* actor = object().cast_actor())
 	{
 		CHolderCustom* holder = actor->Holder();
@@ -391,7 +402,18 @@ void CScriptGameObject::SetActorPosition(Fvector pos)
 
 		Fmatrix F = actor->XFORM();
 		F.c = pos;
-		actor->ForceTransform(F);
+		if (skipCollision)
+		{
+			actor->XFORM().set(F);
+			auto* movement = actor->character_physics_support()->movement();
+			if (movement->CharacterExist())
+			{
+				movement->SetPosition(F.c);
+				if (!keepSpeed) movement->SetVelocity(0.f, 0.f, 0.f);
+			}
+		}
+		else
+			actor->ForceTransform(F);
 	}
 	else
 	{

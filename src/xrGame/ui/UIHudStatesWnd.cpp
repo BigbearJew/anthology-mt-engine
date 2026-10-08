@@ -105,6 +105,19 @@ void CUIHudStatesWnd::InitFromXml( CUIXml& xml, LPCSTR path )
 
 	m_back            = UIHelper::CreateStatic( xml, "back", this );
 	m_ui_health_bar   = UIHelper::CreateProgressBar( xml, "progress_bar_health", this );
+    if (xml.NavigateToNode("progress_bar_psy", 0))
+    {
+        m_ui_psy_bar = UIHelper::CreateProgressBar(xml, "progress_bar_psy", this);
+        m_ui_psy_bar->IsExpressionSystem = xml.ReadAttrib("progress_bar_psy", 0, "expression", nullptr) != nullptr;
+    }
+    else
+    {
+        m_ui_psy_bar = new CUIProgressBar();
+        m_ui_psy_bar->SetAutoDelete(true);
+        AttachChild(m_ui_psy_bar);
+        m_ui_psy_bar->Show(false);
+    }
+
 	m_ui_health_bar->IsExpressionSystem = xml.ReadAttrib("progress_bar_health", 0, "expression", nullptr) != nullptr;
 
 	if (xml.NavigateToNode("back_v", 0))
@@ -301,6 +314,8 @@ void CUIHudStatesWnd::Update()
 
 void CUIHudStatesWnd::UpdateHealth( CActor* actor )
 {
+    if (m_ui_psy_bar && m_ui_psy_bar->IsShown() && !m_ui_psy_bar->IsExpressionSystem)
+        m_ui_psy_bar->SetProgressPos(actor->conditions().GetPsyHealth() * 100.f);
 	if (!m_ui_health_bar->IsExpressionSystem)
 	{
 		float cur_health = actor->GetfHealth();

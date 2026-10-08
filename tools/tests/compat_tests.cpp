@@ -5,9 +5,20 @@
 #include "xrScripts/linker.h"
 #include "xrScripts/script_engine.h"
 #include "xrScripts/dxml_bridge.h"
+#include "xrScripts/exports/script_fvector.h"
 #include "xrCore/FormatParsers/XML/xrXMLParser.h"
 #include "Layers/xrRender/ThmChunk.h"
 #include <fstream>
+#include <luabind/luabind.hpp>
+
+static void* __cdecl test_luabind_allocator(luabind::memory_allocation_function_parameter, const void* pointer, size_t size)
+{
+    void* mutable_pointer = const_cast<void*>(pointer);
+    if (!size) { xr_free(mutable_pointer); return nullptr; }
+    return pointer ? Memory.mem_realloc(mutable_pointer, size) : Memory.mem_alloc(size);
+}
+
+static int checked_argument_probe(int value) { return value + 1; }
 
 static void check(bool success, const char* label)
 {
@@ -149,6 +160,42 @@ int main(int argc, char** argv)
         check(result == 0, "Anomaly Lua module uses native IX-Ray string/table/marshal/lfs implementations");
         if (lua_test)
         {
+            luabind::allocator = &test_luabind_allocator;
+            luabind::allocator_parameter = nullptr;
+            luabind::open(scripts.lua());
+            CScriptFvector::script_register(scripts.lua());
+            check(luaL_dostring(scripts.lua(),
+                "local v=vector():set(1,2,3); assert(v:add(4,5,6)==v); "
+                "assert(v.x==5 and v.y==7 and v.z==9); "
+                "v:add(1):add(vector():set(1,2,3)); "
+                "assert(v.x==7 and v.y==10 and v.z==13)") == 0,
+                "three-component vector add chains correctly and preserves native scalar/vector overloads");
+
+            luabind::module(scripts.lua())[luabind::def("checked_argument_probe", &checked_argument_probe)];
+            check(luaL_dostring(scripts.lua(),
+                "assert(checked_argument_probe(8)==9); "
+                "local ok,err=pcall(checked_argument_probe, {}); "
+                "assert(not ok and tostring(err):find('no match',1,true))") == 0,
+                "checked bindings reject incompatible arguments before entering native code");
+            check(luaL_dostring(scripts.lua(),
+                "class 'OptionalMethodProbe'; "
+                "function OptionalMethodProbe:__init() end; "
+                "assert(OptionalMethodProbe.missing_method==nil); "
+                "function OptionalMethodProbe:answer() return 29 end; "
+                "assert(OptionalMethodProbe():answer()==29)") == 0,
+                "checked Lua bindings preserve nil for optional methods of script classes");
+            const int marshal_result = luaL_dofile(scripts.lua(), "marshal_test.lua");
+            if (marshal_result) fprintf(stderr, "%s\n", lua_tostring(scripts.lua(), -1));
+            check(marshal_result == 0, "marshal preserves cycles, closures and deep tables; rejects incompatible bytecode and truncated input");
+            g_pScriptEngine = &scripts;
+            const int autoload_top = lua_gettop(scripts.lua());
+            scripts.setup_auto_load();
+            lua_settop(scripts.lua(), autoload_top);
+            check(luaL_dostring(scripts.lua(),
+                "assert(MixedCase_Probe.value==19); MixedCase_Probe.value=23; "
+                "assert(MixedCase_Probe.value==23 and absent_ixray_probe==nil); "
+                "assert(mixedcase_probe.value==19 and MixedCase_Probe.value==23)") == 0,
+                "script autoload ignores filename case, caches exact namespaces and leaves missing globals nil");
             string_path global_path;
             FS.update_path(global_path, "$game_scripts$", "global_probe.script");
             scripts.xray_scripts["_g"] = global_path;
@@ -216,6 +263,7 @@ int main(int argc, char** argv)
             check(mcm_result == 0, "native MCM uses available command tokens/bounds without changing settings at discovery");
             CXml::SetReadCallback(nullptr);
             xml_test_state = nullptr;
+            g_pScriptEngine = nullptr;
             check(!CXml::HasReadCallback() && xml.Load("$game_config$", "ui", "dxml_probe.xml") && xml.ReadInt("value", 0, -1) == 5,
                 "detaching Lua callback preserves native XML overrides");
         }

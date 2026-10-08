@@ -35,6 +35,66 @@
 #include "sight_manager_space.h"
 #include "../xrScripts/exports/script_ini_file.h"
 
+#include "InventoryOwner.h"
+#include "Inventory.h"
+#include "Level.h"
+#include "WeaponMagazinedWGrenade.h"
+
+namespace
+{
+CWeapon* cast_anomaly_weapon(CScriptGameObject* self)
+{
+    return self ? self->object().cast_weapon() : nullptr;
+}
+
+void iterate_anomaly_inventory(CScriptGameObject* self, luabind::functor<bool> callback,
+    const luabind::object& context, bool belt)
+{
+    auto* owner = self ? self->object().cast_inventory_owner() : nullptr;
+    if (!owner) return;
+    const auto& items = belt ? owner->inventory().m_belt : owner->inventory().m_ruck;
+    xr_vector<u16> ids;
+    ids.reserve(items.size());
+    for (auto* item : items) ids.push_back(item->object().ID());
+    // The callback may move or release inventory entries.
+    for (u16 id : ids)
+    {
+        auto* object = Level().Objects.net_Find(id);
+        auto* game_object = object ? object->cast_game_object() : nullptr;
+        if (game_object && game_object->H_Parent() == &self->object()
+            && callback(context, game_object->lua_game_object())) return;
+    }
+}
+void iterate_anomaly_belt(CScriptGameObject* self, luabind::functor<bool> callback, const luabind::object& context)
+{
+    iterate_anomaly_inventory(self, callback, context, true);
+}
+void iterate_anomaly_ruck(CScriptGameObject* self, luabind::functor<bool> callback, const luabind::object& context)
+{
+    iterate_anomaly_inventory(self, callback, context, false);
+}
+luabind::object empty_inventory_context(const luabind::functor<bool>& callback)
+{
+    return luabind::object(callback.lua_state(), static_cast<CScriptGameObject*>(nullptr));
+}
+void iterate_anomaly_belt_plain(CScriptGameObject* self, luabind::functor<bool> callback)
+{
+    iterate_anomaly_belt(self, callback, empty_inventory_context(callback));
+}
+void iterate_anomaly_ruck_plain(CScriptGameObject* self, luabind::functor<bool> callback)
+{
+    iterate_anomaly_ruck(self, callback, empty_inventory_context(callback));
+}
+void iterate_inventory_plain(CScriptGameObject* self, luabind::functor<bool> callback)
+{
+    self->IterateInventory(callback, empty_inventory_context(callback));
+}
+void iterate_inventory_box_plain(CScriptGameObject* self, luabind::functor<bool> callback)
+{
+    self->IterateInventoryBox(callback, empty_inventory_context(callback));
+}
+}
+
 using namespace luabind;
 
 class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject> &&instance)
@@ -330,7 +390,13 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		.def("wounded",						(void (CScriptGameObject::*)(bool))(&CScriptGameObject::wounded))
 
 		.def("iterate_inventory",			&CScriptGameObject::IterateInventory)
+		.def("iterate_inventory", &iterate_inventory_plain)
+		.def("iterate_belt", &iterate_anomaly_belt)
+		.def("iterate_belt", &iterate_anomaly_belt_plain)
+		.def("iterate_ruck", &iterate_anomaly_ruck)
+		.def("iterate_ruck", &iterate_anomaly_ruck_plain)
 		.def("iterate_inventory_box",		&CScriptGameObject::IterateInventoryBox)
+		.def("iterate_inventory_box", &iterate_inventory_box_plain)
 		.def("mark_item_dropped",			&CScriptGameObject::MarkItemDropped)
 		.def("marked_dropped",				&CScriptGameObject::MarkedDropped)
 		.def("unload_magazine",				&CScriptGameObject::UnloadMagazine)
@@ -406,6 +472,7 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		.def("cast_InventoryItem", &CScriptGameObject::cast_InventoryItem)
 		.def("cast_InventoryOwner", &CScriptGameObject::cast_InventoryOwner)
 		.def("cast_Actor", &CScriptGameObject::cast_Actor)
+		.def("cast_Weapon", &cast_anomaly_weapon)
 		.def("cast_Medkit", &CScriptGameObject::cast_Medkit)
 		.def("cast_EatableItem", &CScriptGameObject::cast_EatableItem)
 		.def("cast_Antirad", &CScriptGameObject::cast_Antirad)

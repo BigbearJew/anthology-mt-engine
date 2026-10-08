@@ -7,6 +7,6 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #pragma once
-#include "../xrScripts/script_export_space.h"
+#include "../script_export_space.h"
 
 typedef class_exporter_lib<Fvector> SCRIPTS_API CScriptFvector;

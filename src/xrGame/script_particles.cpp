@@ -8,6 +8,7 @@
 
 #include "StdAfx.h"
 #include "script_particles.h"
+#include "../Include/xrRender/ParticleCustom.h"
 #include "../xrEngine/ObjectAnimator.h"
 #include "../xrEngine/IGame_Persistent.h"
 
@@ -96,6 +97,7 @@ void CScriptParticlesCustom::remove_owner	()
 
 CScriptParticles::CScriptParticles(LPCSTR caParticlesName)
 {
+    m_transform.identity();
 	m_particles = xr_make_shared<CScriptParticlesCustom>(this, caParticlesName);
 	g_pGamePersistent->ps_active_deffer.push_back(m_particles);
 }
@@ -116,16 +118,54 @@ CScriptParticles::~CScriptParticles()
 	}
 }
 
-void CScriptParticles::Play()
+void CScriptParticles::Play(bool hud)
 {
-	VERIFY						(m_particles);
-	m_particles->Play			(false);
+    if (!m_particles) return;
+    SetHudMode(hud);
+    m_particles->Play(hud);
 }
 
-void CScriptParticles::PlayAtPos(const Fvector &position)
+void CScriptParticles::PlayAtPos(const Fvector& position, bool hud)
 {
-	VERIFY						(m_particles);
-	m_particles->play_at_pos	(position);
+    if (!m_particles || !_valid(position)) return;
+    m_transform.translate_over(position);
+    m_particles->UpdateParent(m_transform, Fvector().set(0, 0, 0));
+    Play(hud);
+    m_particles->UpdateParent(m_transform, Fvector().set(0, 0, 0));
+}
+
+void CScriptParticles::SetHudMode(bool hud)
+{
+    if (!m_particles || !m_particles->renderable.visual) return;
+    if (auto* visual = m_particles->renderable.visual->dcast_ParticleCustom()) visual->SetHudMode(hud);
+}
+
+void CScriptParticles::SetDirection(const Fvector& direction)
+{
+    if (!m_particles || !_valid(direction) || direction.square_magnitude() < EPS_S) return;
+    Fmatrix transform;
+    transform.identity();
+    transform.k.set(direction).normalize();
+    Fvector::generate_orthonormal_basis_normalized(transform.k, transform.j, transform.i);
+    transform.translate_over(m_transform.c);
+    m_transform = transform;
+    m_particles->UpdateParent(m_transform, Fvector().set(0, 0, 0));
+}
+
+void CScriptParticles::SetOrientation(float yaw, float pitch, float roll)
+{
+    if (!m_particles || !_valid(yaw) || !_valid(pitch) || !_valid(roll)) return;
+    const Fvector position = m_transform.c;
+    m_transform.setHPB(yaw, pitch, roll);
+    m_transform.translate_over(position);
+    m_particles->SetXFORM(m_transform);
+}
+
+void CScriptParticles::SetPosition(const Fvector& position)
+{
+    if (!m_particles || !_valid(position)) return;
+    m_transform.translate_over(position);
+    m_particles->SetXFORM(m_transform);
 }
 
 void CScriptParticles::Stop		()
@@ -143,9 +183,9 @@ void CScriptParticles::StopDeffered()
 void CScriptParticles::MoveTo	(const Fvector &pos, const Fvector& vel)
 {
 	VERIFY						(m_particles);
-	Fmatrix						XF;
-	XF.translate				(pos);
-	m_particles->UpdateParent	(XF,vel);
+    if (!_valid(pos) || !_valid(vel)) return;
+    m_transform.translate_over(pos);
+    m_particles->UpdateParent(m_transform, vel);
 }
 
 bool CScriptParticles::IsPlaying() const

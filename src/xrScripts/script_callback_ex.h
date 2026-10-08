@@ -9,6 +9,7 @@
 #pragma once
 #include "script_engine.h"
 #include "script_export_space.h"
+#include <exception>
 
 IC bool compare_safe(const luabind::object& o1, const luabind::object& o2)
 {
@@ -22,6 +23,11 @@ IC bool compare_safe(const luabind::object& o1, const luabind::object& o2)
 #	define process_error \
 		catch(luabind::error &e) {\
 			g_pScriptEngine->print_output(g_pScriptEngine->lua(),"",LUA_ERRRUN);\
+		} \
+		catch (const std::exception& e) { \
+			Msg("! Lua callback C++ exception (%s): %s", typeid(e).name(), e.what()); \
+			lua_pushstring(g_pScriptEngine->lua(), e.what()); \
+			g_pScriptEngine->print_output(g_pScriptEngine->lua(), "", LUA_ERRRUN); \
 		}
 #else
 #	define process_error
@@ -121,7 +127,7 @@ public:
             }
             process_error catch (...)
             {
-                g_pScriptEngine->print_output(g_pScriptEngine->lua(), "", 1);
+                g_pScriptEngine->print_output(g_pScriptEngine->lua(), "", LUA_ERRRUN);
             }
         }
         catch (...)
@@ -151,7 +157,7 @@ public:
             }
             process_error catch (...)
             {
-                g_pScriptEngine->print_output(g_pScriptEngine->lua(), "", 1);
+                g_pScriptEngine->print_output(g_pScriptEngine->lua(), "", LUA_ERRRUN);
             }
         }
         catch (...)
@@ -184,7 +190,7 @@ void CScriptCallbackEx<void>::operator()(Args &&...args) const
         }
         process_error catch (...)
         {
-            g_pScriptEngine->print_output(g_pScriptEngine->lua(), "", 1);
+            g_pScriptEngine->print_output(g_pScriptEngine->lua(), "", LUA_ERRRUN);
         }
     }
     catch (...)
@@ -215,7 +221,7 @@ void CScriptCallbackEx<void>::operator()(Args &&...args)
         }
         process_error catch (...)
         {
-            g_pScriptEngine->print_output(g_pScriptEngine->lua(), "", 1);
+            g_pScriptEngine->print_output(g_pScriptEngine->lua(), "", LUA_ERRRUN);
         }
     }
     catch (...)

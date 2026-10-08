@@ -248,6 +248,8 @@ public:
 			void				ResetActionQueue	();
 	// Actor only
 			void				SetActorPosition	(Fvector pos);
+			void SetActorPosition(Fvector pos, bool skipCollision);
+			void SetActorPosition(Fvector pos, bool skipCollision, bool keepSpeed);
 			void				SetActorDirection	(float dir);
 			void				CameraMove			(float YawOffset);	// FNAS
 			void				SwitchTorch			();					// FNAS

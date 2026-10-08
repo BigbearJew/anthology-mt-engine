@@ -44,6 +44,20 @@ CDialogHolder::~CDialogHolder()
 {
 }
 
+void CDialogHolder::OnDialogDestroyed(CUIDialogWnd* dialog)
+{
+	SetMainInputReceiver(dialog, true);
+	// A Lua-owned dialog can die during Update: keep active iterators valid.
+	for (auto* queue : { &m_dialogsToRender, &m_dialogsToRender_new })
+		for (auto& entry : *queue)
+			if (entry.wnd == dialog)
+			{
+				entry.enabled = false;
+				entry.wnd = nullptr;
+			}
+	dialog->SetHolder(nullptr);
+}
+
 void CDialogHolder::StartMenu(CUIDialogWnd* pDialog, bool bDoHideIndicators)
 {
 	R_ASSERT						( !pDialog->IsShown() );
@@ -188,7 +202,7 @@ CUIDialogWnd* CDialogHolder::TopInputReceiver()
 
 void CDialogHolder::SetMainInputReceiver	(CUIDialogWnd* ir, bool _find_remove)	
 { 
-	if( TopInputReceiver() == ir ) return;
+	if (!_find_remove && TopInputReceiver() == ir) return;
 
 	if(!ir || _find_remove){
 		if(m_input_receivers.empty())	return;
@@ -201,8 +215,11 @@ void CDialogHolder::SetMainInputReceiver	(CUIDialogWnd* ir, bool _find_remove)
 			u32 cnt = (u32)m_input_receivers.size();
 			for(;cnt>0;--cnt)
 				if( m_input_receivers[cnt-1].m_item == ir ){
-					m_input_receivers[cnt].m_flags.set(recvItem::eCrosshair, m_input_receivers[cnt-1].m_flags.test(recvItem::eCrosshair) );
-					m_input_receivers[cnt].m_flags.set(recvItem::eIndicators, m_input_receivers[cnt-1].m_flags.test(recvItem::eIndicators) );
+					if (cnt < m_input_receivers.size())
+					{
+						m_input_receivers[cnt].m_flags.set(recvItem::eCrosshair, m_input_receivers[cnt-1].m_flags.test(recvItem::eCrosshair));
+						m_input_receivers[cnt].m_flags.set(recvItem::eIndicators, m_input_receivers[cnt-1].m_flags.test(recvItem::eIndicators));
+					}
 					xr_vector<recvItem>::iterator it = m_input_receivers.begin();
 					std::advance			(it,cnt-1);
 					m_input_receivers.erase	(it);

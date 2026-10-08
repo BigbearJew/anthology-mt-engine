@@ -96,6 +96,12 @@ CScriptIniFile* read_ini(LPCSTR path, LPCSTR ini_file)
 	return new CScriptIniFile(true, ini_file, path, true);
 }
 
+// Legacy addons sometimes omit the key to select their default value.
+static bool line_exists_without_key(CScriptIniFile* ini, LPCSTR section)
+{
+    return ini->line_exist(section, nullptr);
+}
+
 #pragma optimize("s",on)
 void CScriptIniFile::script_register(lua_State *L)
 {
@@ -131,6 +137,7 @@ void CScriptIniFile::script_register(lua_State *L)
 			.def(					constructor<LPCSTR>())
 			.def("section_exist",	&CScriptIniFile::section_exist	)
 			.def("line_exist",		&CScriptIniFile::line_exist		)
+			.def("line_exist", &line_exists_without_key)
 			.def("r_clsid",			&CScriptIniFile::r_clsid		)
 			.def("r_bool",			&CScriptIniFile::r_bool			)
 			.def("r_token",			&CScriptIniFile::r_token		)

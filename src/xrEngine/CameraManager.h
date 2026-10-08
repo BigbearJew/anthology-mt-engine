@@ -103,8 +103,8 @@ public:
 	void					Dump					();
 	u32						Count					()	{return u32(m_EffectorsCam.size()+m_EffectorsCam_added_deffered.size());}
 	CEffectorCam*			AddCamEffector			(CEffectorCam*		ef);
-	CEffectorCam*			GetCamEffector			(ECamEffectorType	type);
-	void					RemoveCamEffector		(ECamEffectorType	type);
+	CEffectorCam*			GetCamEffector			(ECamEffectorType	type, bool includeDeferred = false);
+	void					RemoveCamEffector		(ECamEffectorType	type, bool includeDeferred = false);
 
 	ECamEffectorType		RequestCamEffectorId	();
 	EEffectorPPType			RequestPPEffectorId		();

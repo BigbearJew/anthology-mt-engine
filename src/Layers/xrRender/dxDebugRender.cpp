@@ -13,7 +13,7 @@ dxDebugRender DebugRenderImpl;
 
 dxDebugRender::dxDebugRender()
 {
-	m_lines.reserve			(line_vertex_limit);
+	m_lines.reserve(line_vertex_limit / sizeof(std::pair<FVF::L, FVF::L>));
 	m_dbgVB = nullptr;
 }
 
@@ -53,10 +53,12 @@ void dxDebugRender::Render()
 	{
 		size_t drawCount = std::min((size_t)line_vertex_limit / sizeof(std::pair<FVF::L, FVF::L>), m_lines.size() - offset);
 
+		// Buffer uploads need a byte range: a null box reads the entire allocation.
+		D3D11_BOX range = {0, 0, 0, UINT(drawCount * sizeof(std::pair<FVF::L, FVF::L>)), 1, 1};
 		RContext->UpdateSubresource(
 			m_dbgVB,
 			0,
-			nullptr,
+			&range,
 			m_lines.data() + offset,
 			drawCount * sizeof(std::pair<FVF::L, FVF::L>),
 			0);
@@ -64,7 +66,7 @@ void dxDebugRender::Render()
 		RCache.set_xform_world(Fidentity);
 		RCache.set_Element(m_dbgShaders[dbgShaderWorld]->E[r_debug_render_depth * 4]);
 		RCache.set_Geometry(m_dbgGeom);
-		RCache.Render(D3DPT_LINELIST, 0, drawCount / 2);
+		RCache.Render(D3DPT_LINELIST, 0, u32(drawCount));
 
 		offset += drawCount;
 	}
@@ -73,7 +75,7 @@ void dxDebugRender::Render()
 	RCache.OnFrameEnd();
 	RCache.set_Z(r_debug_render_depth);
 	CHK_DX(RDevice->SetFVF(FVF::F_L));
-	CHK_DX(RDevice->DrawPrimitiveUP(D3DPT_LINELIST, m_lines.size() / 2, m_lines.data(), sizeof(FVF::L)));
+	CHK_DX(RDevice->DrawPrimitiveUP(D3DPT_LINELIST, m_lines.size(), m_lines.data(), sizeof(FVF::L)));
 #endif // USE_DX11
 
 	m_lines.clear();//resize(0);

@@ -37,13 +37,19 @@ public:
 
 class CScriptParticles
 {
+    Fmatrix m_transform;
 public:
+    void SetDirection(const Fvector& direction);
+    void SetOrientation(float yaw, float pitch, float roll);
+    void SetPosition(const Fvector& position);
+    void SetHudMode(bool hud);
+    Fvector LastPosition() const { return m_transform.c; }
 	xr_shared_ptr<CScriptParticlesCustom> m_particles;
 								CScriptParticles	(LPCSTR caParticlesName);
 	virtual						~CScriptParticles	();
 
-	void						Play				();
-	void						PlayAtPos			(const Fvector &pos);
+	void						Play				(bool hud = false);
+	void						PlayAtPos			(const Fvector &pos, bool hud = false);
 	void						Stop				();
 	void						StopDeffered		();
 

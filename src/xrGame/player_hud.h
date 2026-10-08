@@ -1,3 +1,4 @@
+struct AnthologyHudLayer;
 #pragma once
 #include "firedeps.h"
 
@@ -263,7 +264,7 @@ struct animator_item
 	void render();
 
 	void anim_play(const shared_str& item_anm_name, BOOL bMixIn, float speed);
-	u32 anim_play(const shared_str& anim_name, BOOL bMixIn, const CMotionDef*& md);
+	u32 anim_play(const shared_str& anim_name, BOOL bMixIn, const CMotionDef*& md, float speed = 1.f, u8 hand = u8(-1));
 };
 
 class player_hud
@@ -271,7 +272,13 @@ class player_hud
 public: 
 					player_hud			(bool invert = false);
 					~player_hud			();
-	void			load				(const shared_str& model_name);
+	void			load				(const shared_str& model_name, bool force = false);
+	void load_script(LPCSTR section);
+	void reset_model_script();
+    u32 script_anim_play(u8 hand, LPCSTR section, LPCSTR motion, bool mix, float speed);
+    void stop_script_anim();
+    bool allow_script_anim() const;
+    u32 script_motion_length(LPCSTR section, LPCSTR motion, float speed);
 	void			load_default		();
 	void			update				(const Fmatrix& trans);
 	void			render_hud			();	
@@ -312,6 +319,17 @@ public:
 	IKinematics*	m_legs_model;
 	s32				m_show_legs = 1;
 	bool			m_need_reload = true;
+	bool script_override_arms = false;
+    u8 script_anim_hand = u8(-1);
+    u32 script_anim_end = 0;
+    bool only_movement_keys = false;
+    void play_script_layer(LPCSTR name, u8 part, float speed, float power, bool looped, bool no_restart, LPCSTR pivot);
+    void stop_script_layer(LPCSTR name, bool force);
+    float set_script_layer_time(LPCSTR name, float seconds);
+    void update_script_layers();
+    void clear_script_layers();
+    xr_vector<AnthologyHudLayer*> script_layers;
+
 	shared_str		NextHUDSect;
 
 	IKinematicsAnimated* GetModel() { return m_model; }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "AnomalyScriptDebug.h"
+
 #include "../xrEngine/IGame_Level.h"
 #include "../xrEngine/IGame_Persistent.h"
 #include "../xrNetServer/NET_Client.h"
@@ -99,6 +101,11 @@ protected:
 #ifdef DEBUG_DRAW
 	// debug renderer
 	CDebugRenderer				*m_debug_renderer;
+public:
+	xr_map<shared_str, DBG_ScriptObject*> scriptDebugObjects;
+	void RenderScriptDebug();
+	void ClearScriptDebug();
+protected:
 #endif
 
 	CPHCommander				*m_ph_commander;

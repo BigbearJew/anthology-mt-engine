@@ -12,6 +12,7 @@ void RenderAnomalyImGui(bool overlayVisible)
 	if (!g_pScriptEngine || !g_pScriptEngine->lua())
 		return;
 	lua_State* L = g_pScriptEngine->lua();
+	if (!lua_checkstack(L, 8)) return;
 	const int stack = lua_gettop(L);
 	lua_pushliteral(L, "ImGui");
 	lua_rawget(L, LUA_GLOBALSINDEX);

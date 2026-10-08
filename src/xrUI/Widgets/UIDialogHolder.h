@@ -41,6 +41,7 @@ public:
 	virtual					~CDialogHolder					();
 
 	//dialogs
+	void OnDialogDestroyed(CUIDialogWnd* dialog);
 	void					OnExternalHideIndicators		();
 	CUIDialogWnd*			TopInputReceiver				();
 	void					StartStopMenu(CUIDialogWnd* pDialog, bool bDoHideIndicators);

@@ -355,6 +355,11 @@ CUIEditBox* CScriptXmlInit::InitMPPlayerName(LPCSTR path, CUIWindow* parent)
 	return							pWnd;	
 }
 
+static bool xml_node_exists_first(CScriptXmlInit* xml, LPCSTR path)
+{
+	return xml->NodeExist(path, 0);
+}
+
 #pragma optimize("s",on)
 void CScriptXmlInit::script_register(lua_State *L){
 	module(L)
@@ -365,6 +370,7 @@ void CScriptXmlInit::script_register(lua_State *L){
 		.def("ParseDirFile",			&CScriptXmlInit::ParseDirFile)
 
 		.def("NodeExist",				&CScriptXmlInit::NodeExist)
+		.def("NodeExist", &xml_node_exists_first)
 		.def("GetNodesNum",				&CScriptXmlInit::GetNodesNum)
 		.def("NavigateToNode",			&CScriptXmlInit::NavigateToNode)
 		.def("NavigateToNode_ByAttribute", &CScriptXmlInit::NavigateToNode_ByAttribute)

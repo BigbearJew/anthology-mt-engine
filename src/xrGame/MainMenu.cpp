@@ -218,7 +218,7 @@ void CMainMenu::Activate	(bool bActivate)
 			Console->Show					();
 		}
 
-		if(m_startDialog->IsShown())
+		if(m_startDialog && m_startDialog->IsShown())
 			m_startDialog->HideDialog		();
 
 		CleanInternals						();
@@ -260,7 +260,7 @@ bool CMainMenu::ReloadUI()
 {
 	if(m_startDialog)
 	{
-		if(m_startDialog->IsShown())
+		if(m_startDialog && m_startDialog->IsShown())
 			m_startDialog->HideDialog		();
 		CleanInternals						();
 	}

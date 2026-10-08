@@ -135,17 +135,10 @@ int auto_load(lua_State* L)
 		return		(1);
 	}
 
-	xr_string file_name_space = lua_tostring(L, 2);
-
-	if (g_pScriptEngine->xray_scripts.contains(file_name_space))
-	{
-		g_pScriptEngine->process_file_if_exists(file_name_space.c_str(), false);
-		lua_rawget(L, 1);
-	}
-	else
-	{
-		lua_pushnil(L);
-	}
+	// File names use Windows/VFS case rules; Lua namespace names remain case-sensitive.
+	g_pScriptEngine->process_file_if_exists(lua_tostring(L, 2), false);
+	lua_settop(L, 2);
+	lua_rawget(L, 1);
 
 	return (1);
 }
@@ -176,6 +169,7 @@ void CScriptEngine::setup_auto_load		()
 	{
 		string_path	fn1, fn2;
 		_splitpath((*fit).name.c_str(), 0, fn1, fn2, 0);
+		xr_strlwr(fn2);
 
 		FS.update_path(fn1, "$game_scripts$", fn1);
 		xr_strconcat(fn1, fn1, fn2, ".script");
@@ -321,9 +315,10 @@ void CScriptEngine::process_file_if_exists(LPCSTR file_name, bool warn_if_not_ex
 	if (!m_reload_modules && namespace_loaded(file_name))
 		return;
 
-	// _G bootstraps globals; a later _g access is a separate script namespace.
-	const LPCSTR lookup_name = xr_strcmp(file_name, "_G") == 0 ? "_g" : file_name;
-	script_list_type::iterator it = xray_scripts.find(xr_string(lookup_name));
+	// Preserve the requested namespace (including _G), normalize only file lookup.
+	xr_string lookup_name = file_name;
+	xr_strlwr(lookup_name);
+	script_list_type::iterator it = xray_scripts.find(lookup_name);
 	if (it != xray_scripts.end())
 	{
 		Msg("* loading script %s.script", file_name);

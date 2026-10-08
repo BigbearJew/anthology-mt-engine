@@ -44,6 +44,40 @@ CSE_ALifeDynamicObject *alife_object		(const CALifeSimulator *self_, ALife::_OBJ
 	return			(self_->objects().object(object_id,true));
 }
 
+// Anomaly addons use these for allocation limits and targeted world scans.
+u32 alife_object_count(const CALifeSimulator* self)
+{
+	return self ? u32(self->objects().objects().size()) : 0;
+}
+
+void alife_iterate_matching(const CALifeSimulator* self, int clsid, bool filter,
+    const luabind::functor<bool>& callback)
+{
+	if (!self) return;
+	const auto& registry = self->objects();
+	xr_vector<ALife::_OBJECT_ID> ids;
+	ids.reserve(filter ? 8 : registry.objects().size());
+	for (const auto& entry : registry.objects())
+		if (entry.second && (!filter || entry.second->script_clsid() == clsid))
+			ids.push_back(entry.first);
+	// A callback may release an object: never hold a registry iterator across Lua.
+	for (const auto id : ids)
+	{
+		auto* object = registry.object(id, true);
+		if (object && (!filter || object->script_clsid() == clsid) && callback(object)) break;
+	}
+}
+
+void alife_iterate_objects(const CALifeSimulator* self, const luabind::functor<bool>& callback)
+{
+	alife_iterate_matching(self, 0, false, callback);
+}
+
+void alife_iterate_objects_by_clsid(const CALifeSimulator* self, int clsid, const luabind::functor<bool>& callback)
+{
+	alife_iterate_matching(self, clsid, true, callback);
+}
+
 const CALifeObjectRegistry::OBJECT_REGISTRY& alife_objects(const CALifeSimulator* self)
 {
 	VERIFY(self);
@@ -474,6 +508,9 @@ void CALifeSimulator::script_register			(lua_State *L)
 	module(L)
 	[
 		class_<CALifeSimulator>("alife_simulator")
+			.def("object_count", &alife_object_count)
+			.def("iterate_objects", &alife_iterate_objects)
+			.def("iterate_objects_by_clsid", &alife_iterate_objects_by_clsid)
 			.def("valid_object_id",			&valid_object_id)
 			.def("level_id",				&get_level_id)
 			.def("level_name",				&get_level_name)

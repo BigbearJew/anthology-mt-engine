@@ -3867,6 +3867,8 @@ int CWeapon::GetScopeY()
 
 const shared_str CWeapon::GetScopeName() const
 {
+	// Script queries also cover weapons without attachable optics.
+	if (m_cur_scope >= m_scopes.size()) return shared_str();
 	if (bUseAltScope)
 	{
 		return m_scopes[m_cur_scope];

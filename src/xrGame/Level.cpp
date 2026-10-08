@@ -204,6 +204,9 @@ extern CAI_Space *g_ai_space;
 
 CLevel::~CLevel()
 {
+#ifdef DEBUG_DRAW
+	ClearScriptDebug();
+#endif
 	PROF_EVENT("CLevel::~CLevel");
 
 	DestroyImGuiInGame();
@@ -878,6 +881,9 @@ void CLevel::OnRender()
 	}
 #endif
 
+#ifdef DEBUG_DRAW
+	RenderScriptDebug();
+#endif
 #ifdef DEBUG
 	if (bDebug) {
 		DBG().draw_object_info();

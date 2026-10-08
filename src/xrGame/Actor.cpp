@@ -32,6 +32,7 @@
 #include "../xrEngine/xr_input.h"
 //
 #include "Actor.h"
+#include "AnomalyScriptCamera.h"
 #include "ActorAnimation.h"
 #include "actor_anim_defs.h"
 #include "HudItem.h"
@@ -1599,7 +1600,7 @@ void CActor::UpdateCL()
 			
 			BOOL B = ! ((mstate_real & mcLookout) && !IsGameTypeSingleCompatible());
 
-			psHUD_Flags.set( HUD_WEAPON_RT, B );
+			psHUD_Flags.set( HUD_WEAPON_RT, B && AnomalyCameraHudEnabled(this) );
 			B = B && pWeapon->show_crosshair();
 
 			psHUD_Flags.set( HUD_CROSSHAIR_RT2, B );

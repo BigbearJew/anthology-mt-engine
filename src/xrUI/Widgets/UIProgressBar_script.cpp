@@ -3,6 +3,7 @@
 #include <luabind/luabind.hpp>
 
 using namespace luabind;
+namespace { void SetProgressColor(CUIProgressBar* bar, u32 color) { bar->m_UIProgressItem.SetTextureColor(color); } }
 
 #pragma optimize("s",on)
 void CUIProgressBar::script_register(lua_State *L)
@@ -11,6 +12,8 @@ void CUIProgressBar::script_register(lua_State *L)
 	[
 		class_<CUIProgressBar, CUIWindow>("CUIProgressBar")
 		.def(						constructor<>())
+		.def("SetColor", &SetProgressColor)
+		.def("SetRange", &CUIProgressBar::SetRange)
 		.def("SetProgressPos",			&CUIProgressBar::SetProgressPos)
 		.def("GetProgressPos",			&CUIProgressBar::GetProgressPos)
 

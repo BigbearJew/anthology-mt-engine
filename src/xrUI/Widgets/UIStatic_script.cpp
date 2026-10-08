@@ -6,6 +6,24 @@
 
 using namespace luabind;
 
+// Preserve Lua's number-to-text conversion without accepting arbitrary objects.
+template<class T>
+static void set_lua_text(T* self, const luabind::object& value)
+{
+    lua_State* L = value.lua_state();
+    value.pushvalue();
+    if (!lua_isnil(L, -1) && !lua_isstring(L, -1))
+    {
+        lua_pop(L, 1);
+        luaL_error(L, "SetText expects text, a number, or nil");
+        return;
+    }
+    const char* text = lua_tostring(L, -1);
+    self->SetText(text ? text : "");
+    lua_pop(L, 1);
+}
+
+
 #pragma optimize("s",on)
 
 void CUIStatic::script_register(lua_State *L)
@@ -15,6 +33,7 @@ void CUIStatic::script_register(lua_State *L)
 		class_<CUILines>("CUILines")
 		.def("SetFont",				&CUILines::SetFont)
 		.def("SetText",				&CUILines::SetText)
+        .def("SetText", &set_lua_text<CUILines>)
 		.def("SetTextST",			&CUILines::SetTextST)
 		.def("GetText",				&CUILines::GetText)
 		.def("SetElipsis",			&CUILines::SetEllipsis)
@@ -31,6 +50,7 @@ void CUIStatic::script_register(lua_State *L)
 		.def("TextControl",			&CUIStatic::TextItemControl)
 			
        .def("SetText",				(void (CUIStatic::*)(LPCSTR)) (&CUIStatic::SetText))
+        .def("SetText", &set_lua_text<CUIStatic>)
        .def("SetTextST",			(void (CUIStatic::*)(LPCSTR)) (&CUIStatic::SetTextST))
 
        .def("GetText",				&CUIStatic::GetText)
@@ -46,6 +66,7 @@ void CUIStatic::script_register(lua_State *L)
         .def("SetTextColor",		&CUIStatic::SetTextColor_script)
 
         .def("InitTexture",			&CUIStatic::InitTexture)
+        .def("InitTexture", +[](CUIStatic* self, pcstr texture, pcstr) { self->InitTexture(texture, true); })
         .def("InitTexture",			+[](CUIStatic* self, pcstr texture) { self->InitTexture(texture); })
         .def("InitTextureEx",		&CUIStatic::InitTextureEx)
         .def("InitTextureEx",		+[](CUIStatic* self, pcstr texture, pcstr shader) { self->InitTextureEx(texture, shader); })
@@ -65,6 +86,9 @@ void CUIStatic::script_register(lua_State *L)
         .def("SetTextAlign",		&CUIStatic::SetTextAlign_script)
         .def("GetTextAlign",		&CUIStatic::GetTextAlign_script)
 
+        .def("EnableHeading", &CUIStatic::EnableHeading)
+        .def("Heading", &CUIStatic::Heading)
+        .def("SetConstHeading", &CUIStatic::SetConstHeading)
         .def("SetHeading",			&CUIStatic::SetHeading)
         .def("GetHeading",			&CUIStatic::GetHeading)
 
@@ -75,6 +99,7 @@ void CUIStatic::script_register(lua_State *L)
 		.def("AdjustHeightToText",	&CUITextWnd::AdjustHeightToText)
 		.def("AdjustWidthToText",	&CUITextWnd::AdjustWidthToText)
 		.def("SetText",				&CUITextWnd::SetText)
+        .def("SetText", &set_lua_text<CUITextWnd>)
 		.def("SetTextST",			&CUITextWnd::SetTextST)
 		.def("GetText",				&CUITextWnd::GetText)
 		.def("SetFont",				&CUITextWnd::SetFont)

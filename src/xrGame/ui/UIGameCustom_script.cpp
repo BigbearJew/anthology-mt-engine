@@ -8,6 +8,23 @@
 
 using namespace luabind;
 
+static SDrawStaticStruct* get_optional_static(CUIGameCustom* self, const luabind::object& id)
+{
+    lua_State* L = id.lua_state();
+    id.pushvalue();
+    if (!lua_isnil(L, -1) && lua_type(L, -1) != LUA_TSTRING)
+    {
+        lua_pop(L, 1);
+        luaL_error(L, "GetCustomStatic expects a name or nil");
+        return nullptr;
+    }
+    const char* name = lua_tostring(L, -1);
+    auto* result = name ? self->GetCustomStatic(name) : nullptr;
+    lua_pop(L, 1);
+    return result;
+}
+
+
 CUIGameCustom* get_hud(){
 	return CurrentGameUI();
 }
@@ -30,6 +47,7 @@ void CUIGameCustom::script_register(lua_State *L)
             {
                 return self->AddCustomStatic(id, singleInstance);
             })
+            .def("AddCustomStatic", +[](CUIGameCustom* self, pcstr id) { return self->AddCustomStatic(id, false); })
 			.def("AddCustomStatic",			&CUIGameCustom::AddCustomStatic)
 			.def("AddHudMessage",			&CUIGameCustom::AddHudMessage)
 			.def("RemoveCustomStatic",		&CUIGameCustom::RemoveCustomStatic)
@@ -43,6 +61,7 @@ void CUIGameCustom::script_register(lua_State *L)
 			.def("show_messages",			&CUIGameCustom::ShowMessagesWindow)
 			.def("hide_messages",			&CUIGameCustom::HideMessagesWindow)
 			.def("GetCustomStatic",			&CUIGameCustom::GetCustomStatic)
+            .def("GetCustomStatic", &get_optional_static)
 			.def("update_fake_indicators",	&CUIGameCustom::update_fake_indicators)
 			.def("enable_fake_indicators",	&CUIGameCustom::enable_fake_indicators),
 			def("get_hud",					&get_hud)

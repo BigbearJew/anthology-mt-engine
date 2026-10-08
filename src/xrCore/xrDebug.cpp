@@ -473,6 +473,26 @@ void format_message	(LPSTR buffer, const u32 &buffer_size)
 #include "StackTrace/StackTrace.h"
 static bool EnabledStackTrace = true;
 
+// Opt-in: reveal native faults swallowed by legacy catch(...) script callbacks.
+static LONG WINAPI IxrayProbeFirstChance(EXCEPTION_POINTERS* info)
+{
+    if (info->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION || !shared_str_initialized)
+        return EXCEPTION_CONTINUE_SEARCH;
+    static LONG captures = 0;
+    static thread_local bool active = false;
+    if (active || InterlockedIncrement(&captures) > 4) return EXCEPTION_CONTINUE_SEARCH;
+    active = true;
+    CONTEXT context = *info->ContextRecord;
+    Msg("! IX-Ray probe first-chance AV at %p, operation %llu address %p",
+        info->ExceptionRecord->ExceptionAddress, info->ExceptionRecord->ExceptionInformation[0],
+        (void*)info->ExceptionRecord->ExceptionInformation[1]);
+    for (const auto& frame : StackTrace::BuildStackTrace(&context, 64)) Log(frame.c_str());
+    xrLogger::FlushLog();
+    active = false;
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+
 LONG WINAPI UnhandledFilter	(_EXCEPTION_POINTERS *pExceptionInfo)
 {
 	string256				error_message;
@@ -638,6 +658,8 @@ void xrDebug::_initialize(bool dedicated)
 	}
 	*g_bug_report_file = 0;
 #ifdef IXR_WINDOWS
+	if (strstr(GetCommandLineA(), "-ixray_world_probe"))
+		AddVectoredExceptionHandler(1, IxrayProbeFirstChance);
 	previous_filter = ::SetUnhandledExceptionFilter(UnhandledFilter);	// exception handler to all "unhandled" exceptions
 #endif
 }

@@ -1275,6 +1275,7 @@ player_hud::player_hud(bool invert)
 
 player_hud::~player_hud()
 {
+    clear_script_layers();
 	IRenderVisual* v			= m_model->dcast_RenderVisual();
 	::Render->model_Delete		(v);
 	m_model						= nullptr;
@@ -1291,14 +1292,20 @@ player_hud::~player_hud()
 	xr_delete(m_animator_item);
 }
 
-void player_hud::load(const shared_str& player_hud_sect)
+void player_hud::load(const shared_str& player_hud_sect, bool force)
 {
-	if (player_hud_sect == m_sect_name)
+	if (!force && player_hud_sect == m_sect_name)
 	{
 		return;
 	}
 
-	if (!m_need_reload)
+	if (script_override_arms)
+	{
+		m_sect_name = player_hud_sect;
+		return;
+	}
+
+	if (!force && !m_need_reload)
 	{
 		return;
 	}
@@ -1342,6 +1349,7 @@ void player_hud::load(const shared_str& player_hud_sect)
 	}
 
 	u16 l_arm = m_model->dcast_PKinematics()->LL_BoneID("l_clavicle");
+    if (l_arm == BI_NONE) l_arm = m_model->dcast_PKinematics()->LL_BoneID("bip01_l_clavicle");
 	if(l_arm != BI_NONE) {
 		m_model->dcast_PKinematics()->LL_GetBoneInstance(l_arm).set_callback(bctCustom, [](CBoneInstance* B) {g_player_hud->LeftArmCallback(B); }, NULL);
 	}
@@ -1555,10 +1563,9 @@ const Fvector& player_hud::attach_pos() const
 
 void player_hud::LeftArmCallback(CBoneInstance* B)
 {
-	if(!m_attached_items[1])
-		return;
+    if (!m_attached_items[1] && script_layers.empty()) return;
 
-	B->mTransform.mulA_44(m_attached_items[1]?m_transformL:m_transform);
+    B->mTransform.mulA_44(m_transformL);
 	B->mTransform.mulA_44(Fmatrix(m_transform).invert());
 }
 
@@ -1573,10 +1580,13 @@ void angle_inertion(Fvector& c_hpb, const Fvector& t_hpb, float speed)
 
 void player_hud::update(const Fmatrix& cam_trans)
 {
+    if (script_anim_hand != u8(-1) && script_anim_end && Device.dwTimeGlobal >= script_anim_end)
+        stop_script_anim();
 	if(!m_attached_items[0] && !m_attached_items[1] && !m_animator_item)
 	{
 		m_transform.set(cam_trans);
 		m_transformL.set(cam_trans);
+        update_script_layers();
 		return;
 	}
 
@@ -1599,6 +1609,8 @@ void player_hud::update(const Fmatrix& cam_trans)
 		attach_offset.c.set(left_hand_active ? m_attached_items[1]->hands_attach_pos() : attach_pos());
 		m_transformL.mul(trans, left_hand_active ? m_attach_offsetl.set(attach_offset) : m_attach_offsetl.inertion(attach_offset, 1 - Device.fTimeDelta * 10.f));
 	}
+
+    update_script_layers();
 
 	m_model->UpdateTracks();
 	m_model->dcast_PKinematics()->CalculateBones_Invalidate();
@@ -1636,6 +1648,12 @@ u32 player_hud::anim_play(u16 part, const MotionID& M, BOOL bMixIn, const CMotio
 		{
 			continue;
 		}
+
+        if (script_anim_hand <= 2)
+        {
+            const u16 scripted = script_anim_hand == 2 ? u16(-1) : m_model->partitions().part_id(script_anim_hand == 0 ? "right_hand" : "left_hand");
+            if (scripted == u16(-1) || pid == scripted || (pid == 0 && script_anim_hand == 0)) continue;
+        }
 
 		if (pid == 0 || pid == part_id || part_id == u16(-1))
 		{
@@ -2224,6 +2242,26 @@ void player_hud::animator_fx_play(const shared_str& anim_name, u16 place_idx, u1
 	}
 }
 
+void player_hud::load_script(LPCSTR section)
+{
+    if (!section || !pSettings->section_exist(section) || !pSettings->line_exist(section, "visual"))
+    {
+        Msg("! player_hud.set_hands: invalid HUD section %s", section ? section : "<nil>");
+        return;
+    }
+    script_override_arms = false;
+    load(section, true);
+    script_override_arms = true;
+}
+
+void player_hud::reset_model_script()
+{
+    if (!script_override_arms) return;
+    script_override_arms = false;
+    const shared_str section = m_sect_name;
+    load(section, true);
+}
+
 void player_hud::load_default()
 {
 	static auto actorHudDefault = READ_IF_EXISTS(pSettings, r_string, 
@@ -2274,9 +2312,9 @@ animator_item::animator_item(player_hud* pParent, const shared_str& section)
 	string128 val_name;
 
 	xr_strconcat(val_name, "hands_position", _prefix);
-	m_hands_attach[0] = pSettings->r_fvector3(section, val_name);
+	m_hands_attach[0] = READ_IF_EXISTS(pSettings, r_fvector3, section, val_name, zero_vel);
 	xr_strconcat(val_name, "hands_orientation", _prefix);
-	m_hands_attach[1] = pSettings->r_fvector3(section, val_name);
+	m_hands_attach[1] = READ_IF_EXISTS(pSettings, r_fvector3, section, val_name, zero_vel);
 
 	m_hand_motions.load(pParent->GetModel(), section);
 }
@@ -2328,7 +2366,7 @@ void animator_item::render()
 
 void animator_item::anim_play(const shared_str& item_anm_name, BOOL bMixIn, float speed)
 {
-	if (m_item->dcast_PKinematicsAnimated())
+	if (m_item && m_item->dcast_PKinematicsAnimated())
 	{
 		IKinematicsAnimated* ka = m_item->dcast_PKinematicsAnimated();
 
@@ -2356,15 +2394,27 @@ void animator_item::anim_play(const shared_str& item_anm_name, BOOL bMixIn, floa
 	}
 }
 
-u32 animator_item::anim_play(const shared_str& anm_name_b, BOOL bMixIn, const CMotionDef*& md)
+u32 animator_item::anim_play(const shared_str& anm_name_b, BOOL bMixIn, const CMotionDef*& md, float rate, u8 hand)
 {
 	player_hud_motion* anm = m_hand_motions.find_motion(anm_name_b);
+    if (!anm || anm->m_animations.empty()) { md = nullptr; return 0; }
 
 	u8 rnd_idx = (u8)Random.randI(anm->m_animations.size());
 	const motion_descr& M = anm->m_animations[rnd_idx];
-	float speed = anm->m_anim_speed;
-
-	u32 ret = m_parent->anim_play(0, M.mid, bMixIn, md, speed);
+	float speed = anm->m_anim_speed * rate;
+    u32 ret;
+    if (hand <= 2)
+    {
+        auto* model = m_parent->GetModel();
+        const u16 part = hand == 2 ? u16(-1) : model->partitions().part_id(hand == 0 ? "right_hand" : "left_hand");
+        for (u16 pid = 0; pid < model->partitions().count(); ++pid)
+            if (part == u16(-1) || pid == part || (pid == 0 && hand == 0))
+                if (CBlend* blend = model->PlayCycle(pid, M.mid, bMixIn)) blend->speed *= speed;
+        model->dcast_PKinematics()->CalculateBones_Invalidate();
+        ret = m_parent->motion_length(M.mid, md, speed);
+    }
+    else
+        ret = m_parent->anim_play(0, M.mid, bMixIn, md, speed);
 	
 	if (m_item)
 	{
@@ -2414,4 +2464,54 @@ u32 animator_item::anim_play(const shared_str& anm_name_b, BOOL bMixIn, const CM
 		}
 	}
 	return ret;
+}
+// Anomaly's script animations use IX-Ray's native HUD animator/model ownership.
+u32 player_hud::script_anim_play(u8 hand, LPCSTR section, LPCSTR motion, bool mix, float speed)
+{
+    if (!section || !motion || hand > 2 || !_valid(speed) || speed <= 0.f || !pSettings->section_exist(section))
+        return 0;
+    if (Actor() && Actor()->HudAnimator() && Actor()->HudAnimator()->IsActive()) return 0;
+    stop_script_anim();
+    auto* item = create_animator_item(section);
+    auto* anim = item->m_hand_motions.find_motion(motion);
+    if (!anim || anim->m_animations.empty())
+    {
+        Msg("! HUD script motion %s missing from %s", motion, section);
+        delete_animator_item();
+        return 0;
+    }
+    const CMotionDef* md = nullptr;
+    const u32 duration = item->anim_play(motion, mix, md, speed, hand);
+    script_anim_hand = hand;
+    script_anim_end = duration ? Device.dwTimeGlobal + duration : 0;
+    return duration;
+}
+
+void player_hud::stop_script_anim()
+{
+    if (script_anim_hand == u8(-1)) return;
+    script_anim_hand = u8(-1);
+    script_anim_end = 0;
+    delete_animator_item();
+    OnMovementChanged(static_cast<ACTOR_DEFS::EMoveCommand>(0));
+}
+
+bool player_hud::allow_script_anim() const
+{
+    if (script_anim_hand != u8(-1)) return false;
+    if (Actor() && Actor()->HudAnimator() && Actor()->HudAnimator()->IsActive()) return false;
+    for (const auto* item : m_attached_items)
+        if (item && (item->m_parent_hud_item->IsPending() || item->m_parent_hud_item->GetState() == CHUDState::eBore)) return false;
+    return true;
+}
+
+u32 player_hud::script_motion_length(LPCSTR section, LPCSTR motion, float speed)
+{
+    if (!section || !motion || !_valid(speed) || speed <= 0.f || !pSettings->section_exist(section)) return 0;
+    player_hud_motion_container motions;
+    motions.load(m_model, section);
+    auto* anim = motions.find_motion(motion);
+    if (!anim || anim->m_animations.empty()) return 0;
+    const CMotionDef* md = nullptr;
+    return motion_length(anim->m_animations.front().mid, md, speed);
 }
