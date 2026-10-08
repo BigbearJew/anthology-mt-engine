@@ -363,10 +363,10 @@ void attachable_hud_item::update(bool bForce)
 	if(!!m_measures.m_prop_flags.test(hud_item_measures::e_16x9_mode_now)!=is_16x9)
 		m_measures.load(m_sect_name, m_model);
 
-	Fvector ypr						= m_measures.m_item_attach[1];
+	Fvector ypr = m_attach_place_idx == 0 ? m_parent->script_adjust_vector(1, 12, m_measures.m_item_attach[1]) : m_measures.m_item_attach[1];
 	ypr.mul							(PI/180.f);
 	m_attach_offset.setHPB			(ypr.x,ypr.y,ypr.z);
-	m_attach_offset.translate_over	(m_measures.m_item_attach[0]);
+	m_attach_offset.translate_over(m_attach_place_idx == 0 ? m_parent->script_adjust_vector(0, 12, m_measures.m_item_attach[0]) : m_measures.m_item_attach[0]);
 
 	m_parent->calc_transform		(m_attach_place_idx, m_attach_offset, m_item_transform);
 	m_upd_firedeps_frame			= Device.dwFrame;
@@ -400,11 +400,13 @@ void attachable_hud_item::setup_firedeps(firedeps& fd)
 			pSettings->r_string(m_sect_name, "fire_bone"));
 
 		Fmatrix& fire_mat								= m_model->LL_GetTransform(m_measures.m_fire_bone);
-		fire_mat.transform_tiny							(fd.vLastFP, m_measures.m_fire_point_offset);
+		fire_mat.transform_tiny							(fd.vLastFP, m_parent->script_adjust_vector(0, 10, m_measures.m_fire_point_offset));
 		m_item_transform.transform_tiny					(fd.vLastFP);
 
 		fd.vLastFD.set									(0.f,0.f,1.f);
-		m_item_transform.transform_dir					(fd.vLastFD);
+		fd.vLastFD = m_parent->script_adjust_vector(1, 10, fd.vLastFD);
+        fd.vLastFD.normalize_safe();
+        m_item_transform.transform_dir					(fd.vLastFD);
 		VERIFY(_valid(fd.vLastFD));
 		VERIFY(_valid(fd.vLastFD));
 
@@ -424,7 +426,7 @@ void attachable_hud_item::setup_firedeps(firedeps& fd)
 			pSettings->r_string(m_sect_name, "fire_bone2"));
 
 		Fmatrix& fire_mat			= m_model->LL_GetTransform(m_measures.m_fire_bone2);
-		fire_mat.transform_tiny		(fd.vLastFP2,m_measures.m_fire_point2_offset);
+		fire_mat.transform_tiny		(fd.vLastFP2,m_parent->script_adjust_vector(0, 11, m_measures.m_fire_point2_offset));
 		m_item_transform.transform_tiny	(fd.vLastFP2);
 		VERIFY(_valid(fd.vLastFP2));
 		VERIFY(_valid(fd.vLastFP2));
@@ -437,7 +439,7 @@ void attachable_hud_item::setup_firedeps(firedeps& fd)
 			return;
 		}
 		Fmatrix& fire_mat			= m_model->LL_GetTransform(m_measures.m_shell_bone);
-		fire_mat.transform_tiny		(fd.vLastSP,m_measures.m_shell_point_offset);
+		fire_mat.transform_tiny		(fd.vLastSP,m_parent->script_adjust_vector(1, 11, m_measures.m_shell_point_offset));
 		m_item_transform.transform_tiny	(fd.vLastSP);
 		VERIFY(_valid(fd.vLastSP));
 		VERIFY(_valid(fd.vLastSP));
@@ -474,6 +476,15 @@ void hud_item_measures::hud_hands_positions::Load(const shared_str& section, boo
 	xr_strconcat(val_name, "gl_hud_offset_rot", _prefix);
 	hands_offsets[1][2] = READ_IF_EXISTS(pSettings, r_fvector3, sSection, val_name, default_is_self ? hands_offsets[1][2] : zero_vel);
 
+    for (int i = 3; i < 5; ++i)
+    {
+        const char* pos = i == 3 ? "aim_hud_offset_alt_pos" : "lowered_hud_offset_pos";
+        const char* rot = i == 3 ? "aim_hud_offset_alt_rot" : "lowered_hud_offset_rot";
+        xr_strconcat(val_name, pos, _prefix);
+        hands_offsets[0][i] = READ_IF_EXISTS(pSettings, r_fvector3, sSection, val_name, READ_IF_EXISTS(pSettings, r_fvector3, sSection, pos, zero_vel));
+        xr_strconcat(val_name, rot, _prefix);
+        hands_offsets[1][i] = READ_IF_EXISTS(pSettings, r_fvector3, sSection, val_name, READ_IF_EXISTS(pSettings, r_fvector3, sSection, rot, zero_vel));
+    }
 	memcpy(hands_offsets_tune, hands_offsets, sizeof(hands_offsets_tune));
 }
 
@@ -1534,7 +1545,7 @@ const Fvector& player_hud::attach_rot() const
 	}
 
 	if (m_attached_items[0])
-		return m_last_rot=m_attached_items[0]->hands_attach_rot();
+		return m_last_rot=script_adjust_vector(1, 0, m_attached_items[0]->hands_attach_rot());
 	else
 	{
 		if (m_attached_items[1])
@@ -1553,7 +1564,7 @@ const Fvector& player_hud::attach_pos() const
 	}
 
 	if (m_attached_items[0])
-		return m_last_pos=m_attached_items[0]->hands_attach_pos();
+		return m_last_pos=script_adjust_vector(0, 0, m_attached_items[0]->hands_attach_pos());
 	else
 	{
 		if (m_attached_items[1])

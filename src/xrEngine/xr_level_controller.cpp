@@ -121,6 +121,7 @@ ENGINE_API _action  actions[]		= {
 	{ "wpn_magcheck",		kMAG_CHECK				,_both },
 	{ "wpn_firecheck",		kFIREMODE_CHECK			,_both },
 																
+	{ "safemode", kSAFEMODE, _sp },
 	{ nullptr, 				kLASTACTION				,_both}		
 };															
 

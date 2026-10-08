@@ -507,6 +507,20 @@ public:
 
 	virtual	float			CurrentZoomFactor	();
 	bool UsesAnomalyParams() const { return m_anomalyParams; }
+    bool SetLowered(bool lowered);
+    bool CanBeLowered() const { return m_bCanBeLowered; }
+    bool IsLowered() const;
+    bool AllowBore() override { return !IsLowered() && inherited::AllowBore(); }
+private:
+    bool m_bCanBeLowered = false;
+    float m_fSafeModeRotateTime = 1.f;
+    u32 m_lowerTransitionUntil = 0;
+    Fvector m_lowerHudPosition = {0.f, 0.f, 0.f};
+    Fvector m_lowerHudRotation = {0.f, 0.f, 0.f};
+    bool m_lowerHudTransition = false;
+    struct SafeModeAnimation { shared_str name; float speed = 1.f; float power = 1.f; };
+    SafeModeAnimation m_safeModeAnimations[2];
+public:
 	//показывает, что оружие находится в соостоянии поворота для приближенного прицеливания
 			bool			IsRotatingToZoom	() const		{	return (m_zoom_params.m_fZoomRotationFactor<1.f);}
 

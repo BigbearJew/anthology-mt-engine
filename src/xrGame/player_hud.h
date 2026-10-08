@@ -150,8 +150,8 @@ struct hud_item_measures
 	struct hud_hands_positions
 	{
 		void Load(const shared_str& section, bool is_16x9);
-		Fvector hands_offsets[2][3]; //pos,rot //normal, aim, gl
-		Fvector hands_offsets_tune[2][3];
+		Fvector hands_offsets[2][5]; //pos,rot //normal, aim, gl
+		Fvector hands_offsets_tune[2][5];
 		bool bIs16x9 = false;
 		shared_str sSection;
 	} m_hands_positions;
@@ -323,6 +323,15 @@ public:
     u8 script_anim_hand = u8(-1);
     u32 script_anim_end = 0;
     bool only_movement_keys = false;
+    bool script_adjust_enabled = false;
+    Fvector script_adjust_offsets[2][21] = {};
+    bool script_adjust_valid[2][21] = {};
+    float script_adjust_zoom[3] = {};
+    const Fvector& script_adjust_vector(u32 component, u32 index, const Fvector& fallback) const
+    {
+        return script_adjust_enabled && component < 2 && index < 21 && script_adjust_valid[component][index]
+            ? script_adjust_offsets[component][index] : fallback;
+    }
     void play_script_layer(LPCSTR name, u8 part, float speed, float power, bool looped, bool no_restart, LPCSTR pivot);
     void stop_script_layer(LPCSTR name, bool force);
     float set_script_layer_time(LPCSTR name, float seconds);

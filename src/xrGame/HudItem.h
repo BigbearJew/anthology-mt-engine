@@ -92,6 +92,7 @@ protected:
 		u32						m_dwMotionStartTm;
 		u32						m_dwMotionEndTm;
 		u32						m_startedMotionState;
+    u32 m_previousHudState = eHidden;
 		u8						m_started_rnd_anim_idx;
 		bool					m_bStopAtEndAnimIsRunning;
 	};
@@ -115,7 +116,8 @@ public:
 	virtual	u8					GetCurrentHudOffsetIdx () const {return 0;}
 
 	BOOL						GetHUDmode			();
-	IC BOOL						IsPending			()		const					{ return !!m_huditem_flags.test(fl_pending);}
+    // A Lua-facing state must be boolean: integer zero is truthy in Lua.
+	IC bool						IsPending			()		const					{ return !!m_huditem_flags.test(fl_pending);}
 
 	virtual bool				ActivateItem		();
 	virtual void				DeactivateItem		();
@@ -324,7 +326,7 @@ public:
 
 protected:
 
-	IC		void				SetPending			(BOOL H)			{ m_huditem_flags.set(fl_pending, H);}
+	IC		void				SetPending			(bool H)			{ m_huditem_flags.set(fl_pending, H);}
 	shared_str					hud_sect;
 	shared_str					hud_sect_cache;
 

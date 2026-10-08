@@ -15,6 +15,7 @@ struct STorsoWpn{
 	enum eMovingState{eIdle, eWalk, eRun, eSprint, eTotal};
 	MotionID	moving[eTotal];
 
+	MotionID	safemode;
 	MotionID	zoom;
 	MotionID	holster;
 	MotionID	draw;

@@ -304,6 +304,18 @@ void CWeapon::Load		(LPCSTR section)
 {
 	inherited::Load					(section);
 	CShootingObject::Load			(section);
+    m_bCanBeLowered = READ_IF_EXISTS(pSettings, r_bool, section, "can_be_lowered", false);
+    m_fSafeModeRotateTime = READ_IF_EXISTS(pSettings, r_float, section, "weapon_lower_speed", 1.f);
+    if (!_valid(m_fSafeModeRotateTime) || m_fSafeModeRotateTime < .01f) m_fSafeModeRotateTime = .01f;
+    if (hud_sect.size() && pSettings->section_exist(hud_sect))
+    {
+        m_safeModeAnimations[0].name = READ_IF_EXISTS(pSettings, r_string, hud_sect, "safemode_anm", nullptr);
+        m_safeModeAnimations[1].name = READ_IF_EXISTS(pSettings, r_string, hud_sect, "safemode_anm2", nullptr);
+        m_safeModeAnimations[0].speed = READ_IF_EXISTS(pSettings, r_float, hud_sect, "safemode_anm_speed", 1.f);
+        m_safeModeAnimations[1].speed = READ_IF_EXISTS(pSettings, r_float, hud_sect, "safemode_anm_speed2", 1.f);
+        m_safeModeAnimations[0].power = READ_IF_EXISTS(pSettings, r_float, hud_sect, "safemode_anm_power", 1.f);
+        m_safeModeAnimations[1].power = READ_IF_EXISTS(pSettings, r_float, hud_sect, "safemode_anm_power2", 1.f);
+    }
 
 
 
@@ -1330,6 +1342,8 @@ void CWeapon::shedule_Update	(u32 dT)
 
 void CWeapon::OnH_B_Independent	(bool just_before_destroy)
 {
+    SetLowered(false);
+    m_lowerTransitionUntil = 0;
 	RemoveShotEffector			();
 
 	inherited::OnH_B_Independent(just_before_destroy);
@@ -1369,6 +1383,11 @@ void CWeapon::OnH_A_Chield		()
 
 void CWeapon::OnActiveItem ()
 {
+    SetLowered(false);
+    m_lowerTransitionUntil = 0;
+    m_lowerHudPosition.set(0.f, 0.f, 0.f);
+    m_lowerHudRotation.set(0.f, 0.f, 0.f);
+    m_lowerHudTransition = false;
 	//. from Activate
 	UpdateAddonsVisibility();
 	ProcessScope();
@@ -1389,6 +1408,11 @@ void CWeapon::OnActiveItem ()
 
 void CWeapon::OnHiddenItem ()
 {
+    SetLowered(false);
+    m_lowerTransitionUntil = 0;
+    m_lowerHudPosition.set(0.f, 0.f, 0.f);
+    m_lowerHudRotation.set(0.f, 0.f, 0.f);
+    m_lowerHudTransition = false;
 	m_BriefInfo_CalcFrame = 0;
 
 	if(IsGameTypeSingle())
@@ -1805,8 +1829,43 @@ void CWeapon::UpdatePosition_alt(const Fmatrix& trans) {
 	VERIFY(!fis_zero(DET(renderable.xform)));
 }
 
+bool CWeapon::IsLowered() const
+{
+    const auto* actor = smart_cast<const CActor*>(H_Parent());
+    return actor && actor->is_safemode() && actor->inventory().ActiveItem() == this;
+}
+
+bool CWeapon::SetLowered(bool lowered)
+{
+    auto* actor = H_Parent() ? H_Parent()->cast_actor() : nullptr;
+    if (!actor || actor->inventory().ActiveItem() != this) return false;
+    if (actor->is_safemode() == lowered) return true;
+    if (lowered && (!m_bCanBeLowered || IsPending() || GetState() != eIdle)) return false;
+    if (lowered) { FireEnd(); if (IsZoomed()) OnZoomOut(); }
+    m_lowerHudTransition = true;
+    m_lowerTransitionUntil = Device.dwTimeGlobal + u32(_min(m_fSafeModeRotateTime, 10.f) * 1000.f);
+    actor->set_safemode(lowered);
+    const auto& animation = m_safeModeAnimations[!lowered && m_safeModeAnimations[1].name.size() ? 1 : 0];
+    if (g_player_hud && animation.name.size())
+        g_player_hud->play_script_layer(animation.name.c_str(), 2, animation.speed, animation.power, false, false, nullptr);
+    return true;
+}
+
 bool CWeapon::Action(u16 cmd, u32 flags) 
 {
+    if (cmd == kSAFEMODE)
+    {
+        if (flags & CMD_START) SetLowered(!IsLowered());
+        return true;
+    }
+    if ((flags & CMD_START) && cmd == kWPN_FIRE)
+    {
+        // The first trigger press raises the muzzle without firing.
+        if (IsLowered()) { SetLowered(false); return true; }
+        if (Device.dwTimeGlobal < m_lowerTransitionUntil) return true;
+    }
+    if ((flags & CMD_START) && (cmd == kWPN_ZOOM || cmd == kWPN_RELOAD || cmd == kWPN_FUNC))
+        SetLowered(false);
 	if(inherited::Action(cmd, flags)) return true;
 
 	
@@ -2790,6 +2849,9 @@ bool CWeapon::CanLeaveAimNow()
 
 float CWeapon::CurrentZoomFactor()
 {
+    if (m_anomalyParams && g_player_hud && g_player_hud->script_adjust_enabled && ParentIsActor())
+        return g_player_hud->script_adjust_zoom[IsGrenadeMode() ? 1 : 0];
+
 	return IsScopeAttached() ? m_zoom_params.m_fScopeZoomFactor : m_zoom_params.m_fIronSightZoomFactor;
 };
 
@@ -2921,6 +2983,7 @@ float LastZoomFactor = 0.f;
 
 void CWeapon::OnZoomIn()
 {
+    SetLowered(false);
 	m_bSwitchSprint = false;
 	m_zoom_params.m_bIsZoomModeNow		= true;
 
@@ -3287,8 +3350,35 @@ void CWeapon::UpdateHudAdditonal(Fmatrix& trans)
 	Fvector curr_offs, curr_rot;
 	curr_offs = hi->m_measures.m_hands_positions.hands_offsets[0][idx];//pos,aim
 	curr_rot = hi->m_measures.m_hands_positions.hands_offsets[1][idx];//rot,aim
+    if (g_player_hud)
+    {
+        curr_offs = g_player_hud->script_adjust_vector(0, idx, curr_offs);
+        curr_rot = g_player_hud->script_adjust_vector(1, idx, curr_rot);
+    }
 	curr_offs.mul(m_zoom_params.m_fZoomRotationFactor);
 	curr_rot.mul(m_zoom_params.m_fZoomRotationFactor);
+    if (IsLowered())
+    {
+        curr_offs = g_player_hud->script_adjust_vector(0, 4, hi->m_measures.m_hands_positions.hands_offsets[0][4]);
+        curr_rot = g_player_hud->script_adjust_vector(1, 4, hi->m_measures.m_hands_positions.hands_offsets[1][4]);
+    }
+    if (m_lowerHudTransition || IsLowered())
+    {
+        // Bounded interpolation also tolerates a long frame/loading hitch.
+        const float blend = 1.f - expf(-2.5f * _max(Device.fTimeDelta, 0.f) / m_fSafeModeRotateTime);
+        m_lowerHudPosition.lerp(m_lowerHudPosition, curr_offs, blend);
+        m_lowerHudRotation.lerp(m_lowerHudRotation, curr_rot, blend);
+        if (m_lowerHudPosition.similar(curr_offs, .002f) && m_lowerHudRotation.similar(curr_rot, .002f))
+        {
+            m_lowerHudPosition = curr_offs; m_lowerHudRotation = curr_rot;
+            m_lowerHudTransition = false;
+            m_lowerTransitionUntil = 0;
+        }
+        curr_offs = m_lowerHudPosition;
+        curr_rot = m_lowerHudRotation;
+    }
+    else { m_lowerHudPosition = curr_offs; m_lowerHudRotation = curr_rot; }
+
 
 	Fmatrix	hud_rotation;
 	hud_rotation.identity();
@@ -3579,6 +3669,7 @@ BOOL EnableDof = true;
 void CWeapon::OnStateSwitch	(u32 S)
 {
 	inherited::OnStateSwitch(S);
+    if (S != eIdle && IsLowered()) SetLowered(false);
 	m_BriefInfo_CalcFrame = 0;
 
 	if (S == eBore)

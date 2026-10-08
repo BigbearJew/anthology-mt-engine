@@ -96,6 +96,8 @@ void CScriptGameObject::script_register(lua_State *L)
 				value("weapon_no_ammo",				int(GameObject::eWeaponNoAmmoAvailable)),
 		
 				//weapon
+				value("weapon_lowered", int(GameObject::eOnWeaponLowered)),
+				value("weapon_raised", int(GameObject::eOnWeaponRaised)),
 				value("weapon_fired",				int(GameObject::eOnWeaponFired)),
 				value("weapon_jammed",				int(GameObject::eOnWeaponJammed)),
 				value("weapon_zoom_in",				int(GameObject::eOnWeaponZoomIn)),

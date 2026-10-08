@@ -2567,9 +2567,14 @@ void CWeaponMagazined::PlayAnimIdle()
 			return;
 		}
 
-		shared_str new_name = SetCurrentIdleAnimation();
+		shared_str new_name = SetCurrentStateAnimation(SetCurrentIdleAnimation());
+        if (IsLowered() && !AddSuffixName(new_name, "_lowered") && HudAnimationExist("anm_idle_lowered"))
+        {
+            // Packs use both idle_empty_lowered and idle_lowered_jammed naming.
+            new_name = SetCurrentStateAnimation("anm_idle_lowered");
+        }
 
-		PlayHUDMotion(SetCurrentStateAnimation(new_name), EHudMixType::eMixAll, GetState());
+		PlayHUDMotion(new_name, EHudMixType::eMixAll, GetState());
 	}
 }
 

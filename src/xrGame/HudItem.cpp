@@ -1,4 +1,7 @@
 #include "StdAfx.h"
+#include "pch_script.h"
+#include "ai_space.h"
+#include "../xrScripts/script_engine.h"
 #include "script_game_object.h"
 #include "HudItem.h"
 #include "physic_item.h"
@@ -200,6 +203,7 @@ void CHudItem::OnEvent(NET_Packet& P, u16 type)
 void CHudItem::OnStateSwitch(u32 S)
 {
 	u32 old_state = GetState();
+    m_previousHudState = old_state;
 	SetState			(S);
 	
 	if(object().Remote()) 
@@ -517,8 +521,50 @@ bool CHudItem::HudAnimationExist(const shared_str& anim_name)
 	}
 }
 
-u32 CHudItem::PlayHUDMotion(const shared_str& M, EHudMixType bMixIn, u32 state, float speed, float end)
+u32 CHudItem::PlayHUDMotion(const shared_str& originalMotion, EHudMixType bMixIn, u32 state, float speed, float end)
 {
+    shared_str M = originalMotion;
+    if (m_anomalyParams && HudItemData())
+    {
+        luabind::functor<luabind::object> callback;
+        if (ai().script_engine().functor("_G.CHudItem__PlayHUDMotion", callback))
+        {
+            auto input = luabind::newtable(ai().script_engine().lua());
+            input["anm_name"] = M.c_str();
+            input["anm_mixin"] = bMixIn >= eMixHands;
+            input["anm_mixin2"] = bMixIn == eMixAll;
+            input["anm_state"] = state;
+            input["anm_speed"] = speed;
+            input["anm_end"] = end;
+            auto* owner = object().H_Parent() ? object().H_Parent()->cast_game_object() : nullptr;
+            luabind::object output = callback(input, object().lua_game_object(), owner ? owner->lua_game_object() : nullptr);
+            if (output && output.type() == LUA_TTABLE)
+            {
+                const luabind::object name = output["anm_name"];
+                const luabind::object mix = output["anm_mixin"];
+                const luabind::object mixItem = output["anm_mixin2"];
+                const luabind::object newState = output["anm_state"];
+                const luabind::object newSpeed = output["anm_speed"];
+                const luabind::object newEnd = output["anm_end"];
+                if (name.type() == LUA_TSTRING) M = luabind::object_cast<LPCSTR>(name);
+                if (mix.type() == LUA_TBOOLEAN && mixItem.type() == LUA_TBOOLEAN)
+                    bMixIn = luabind::object_cast<bool>(mix) ? (luabind::object_cast<bool>(mixItem) ? eMixAll : eMixHands) : eNoMix;
+                if (newState.type() == LUA_TNUMBER)
+                {
+                    const float value = luabind::object_cast<float>(newState);
+                    if (_valid(value) && value >= 0.f && value <= 255.f && value == floorf(value)) state = u32(value);
+                }
+                if (newSpeed.type() == LUA_TNUMBER) speed = luabind::object_cast<float>(newSpeed);
+                if (newEnd.type() == LUA_TNUMBER) end = luabind::object_cast<float>(newEnd);
+                if (M == "$cancel")
+                {
+                    m_sounds.StopAllSounds();
+                    if (GetState() != m_previousHudState) SwitchState(m_previousHudState);
+                    return 0;
+                }
+            }
+        }
+    }
     if (!_valid(speed) || speed <= 0.f || !_valid(end)) return 0;
 	if (HudItemData() && !HudAnimationExist(M.c_str()))
 	{
@@ -649,6 +695,8 @@ shared_str CHudItem::SetCurrentIdleAnimation()
 
 bool CHudItem::TryPlayAnimIdle()
 {
+    if (auto* actor = object().H_Parent() ? object().H_Parent()->cast_actor() : nullptr)
+        if (actor->is_safemode() && smart_cast<CWeapon*>(this)) return false;
 	if (MovingAnimAllowedNow())
 	{
 		if (CActor* pActor = object().H_Parent() != nullptr ? object().H_Parent()->cast_actor() : nullptr)
@@ -884,6 +932,16 @@ void CHudItem::SetMultipleBonesStatus(const char* section, const char* line, BOO
 
 void CHudItem::OnMotionMark(u32 state, const motion_marks& mark)
 {
+    if (m_anomalyParams && HudItemData())
+    {
+        luabind::functor<void> callback;
+        if (ai().script_engine().functor("_G.CHudItem__OnMotionMark", callback))
+        {
+            auto* owner = object().H_Parent() ? object().H_Parent()->cast_game_object() : nullptr;
+            callback(state, mark.name.c_str(), object().lua_game_object(), owner ? owner->lua_game_object() : nullptr);
+        }
+    }
+
 	if (state == eDeviceSwitch && mark.name == "Left")
 	{
 		if (g_player_hud->attached_item(1) != nullptr && g_player_hud->attached_item(1) == HudItemData() && g_player_hud->attached_item(0) != nullptr)

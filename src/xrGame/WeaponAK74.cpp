@@ -25,6 +25,11 @@ int anomaly_ammo_total(CWeapon* w) { return w->GetSuitableAmmoTotal(); }
 float anomaly_magazine_weight(CWeapon* w) { return w->GetMagazineWeight(w->m_magazine); }
 int anomaly_ammo_count(CWeapon* w, LPCSTR section) { return w->GetAmmoCount_forType(section); }
 float anomaly_fire_dispersion(CWeapon* w) { return w->getFireDispersionBase(); }
+float anomaly_shot_interval(CWeapon* w) { return w->getRPM(); }
+float anomaly_real_rpm(CWeapon* w) { return w->getRPM() > 0.f ? 60.f / w->getRPM() : 0.f; }
+void anomaly_set_shot_interval(CWeapon* w, float seconds) { if (_valid(seconds) && seconds > 0.f) w->setRPM(seconds); }
+void anomaly_set_real_rpm(CWeapon* w, float rpm) { if (_valid(rpm) && rpm > 0.f) w->setRPM(60.f / rpm); }
+
 }
 
 using namespace luabind;
@@ -46,6 +51,10 @@ void CWeaponAK74::script_register	(lua_State *L)
 			.def("GetMagazineWeight", &anomaly_magazine_weight)
 			.def("GetAmmoCount_forType", &anomaly_ammo_count)
 			.def("GetFireDispersion", &anomaly_fire_dispersion)
+            .def("RPM", &anomaly_shot_interval)
+            .def("RealRPM", &anomaly_real_rpm)
+            .def("SetRPM", &anomaly_set_shot_interval)
+            .def("SetRealRPM", &anomaly_set_real_rpm)
 			.def("IsGrenadeLauncherAttached", &CWeapon::IsGrenadeLauncherAttached)
 			.def("GrenadeLauncherAttachable", &CWeapon::GrenadeLauncherAttachable)
 			.def("IsScopeAttached", &CWeapon::IsScopeAttached)
@@ -54,6 +63,8 @@ void CWeaponAK74::script_register	(lua_State *L)
 			.def("SilencerAttachable", &CWeapon::SilencerAttachable)
 			.def("IsZoomEnabled", &CWeapon::IsZoomEnabled)
 			.def("IsZoomed", &CWeapon::IsZoomed)
+            .def("CanBeLowered", &CWeapon::CanBeLowered)
+            .def("SetLowered", &CWeapon::SetLowered)
 			.def("GetZoomFactor", &CWeapon::GetZoomFactor)
 			.def("SetZoomFactor", &CWeapon::SetZoomFactor)
 			.def("IsSingleHanded", &CWeapon::IsSingleHanded)
@@ -68,8 +79,9 @@ void CWeaponAK74::script_register	(lua_State *L)
 			.def("Cost", &CWeapon::Cost)
 			.def("Weight", &CWeapon::Weight)
 			.def("IsMisfire", &CWeapon::IsMisfire)
-			.def("IsPending", &CWeapon::IsPending)
-			.def("SetPending", &CWeapon::SetPending)
+            // Bind the inherited methods to the class exposed to Lua.
+			.def("IsPending", static_cast<bool (CWeapon::*)() const>(&CWeapon::IsPending))
+			.def("SetPending", static_cast<void (CWeapon::*)(bool)>(&CWeapon::SetPending))
 			.def("SetMisfire", &CWeapon::SetMisfireStatus)
 			.def("GetFireMode", &CWeapon::GetCurrentFireMode)
 	];

@@ -2,6 +2,8 @@
 #include "pch_script.h"
 #include "player_hud.h"
 #include "Actor.h"
+#include "Weapon.h"
+#include "Inventory.h"
 #include "CharacterPhysicsSupport.h"
 #include "../xrPhysics/IElevatorState.h"
 
@@ -49,12 +51,38 @@ static void StopLayersDefault() { StopLayers(false); }
 static float SetLayerTime(LPCSTR name, float seconds)
 { return g_player_hud ? g_player_hud->set_script_layer_time(name, seconds) : 0.f; }
 
+static bool ActorWeaponLowered() { return Actor() && Actor()->is_safemode(); }
+static void ActorLowerWeapon(bool lower)
+{
+    auto* actor = Actor();
+    if (!actor) return;
+    auto* item = actor->inventory().ActiveItem();
+    if (auto* weapon = item ? item->cast_weapon() : nullptr) weapon->SetLowered(lower);
+    else if (!lower) actor->set_safemode(false);
+}
+static void HudAdjustEnabled(bool enabled) { if (g_player_hud) g_player_hud->script_adjust_enabled = enabled; }
+static void HudAdjustVector(int component, int index, float x, float y, float z)
+{
+    if (!g_player_hud || component < 0 || component >= 2 || index < 0 || index >= 21 || !_valid(x) || !_valid(y) || !_valid(z)) return;
+    g_player_hud->script_adjust_offsets[component][index].set(x, y, z);
+    g_player_hud->script_adjust_valid[component][index] = true;
+}
+static void HudAdjustValue(LPCSTR name, float value)
+{
+    if (!g_player_hud || !name || !_valid(value)) return;
+    if (!xr_strcmp(name, "scope_zoom_factor")) g_player_hud->script_adjust_zoom[0] = value;
+    else if (!xr_strcmp(name, "gl_zoom_factor")) g_player_hud->script_adjust_zoom[1] = value;
+    else if (!xr_strcmp(name, "scope_zoom_factor_alt")) g_player_hud->script_adjust_zoom[2] = value;
+}
+
 void RegisterAnomalyScriptHud(lua_State* L)
 {
     using namespace luabind;
+    module(L, "hud_adjust")[def("enabled", &HudAdjustEnabled), def("set_vector", &HudAdjustVector), def("set_value", &HudAdjustValue)];
     module(L, "level")[def("actor_moving_state", &ActorMovingState)];
     module(L, "game")
     [
+        def("actor_weapon_lowered", &ActorWeaponLowered), def("actor_lower_weapon", &ActorLowerWeapon),
         def("play_hud_motion", &PlayHudMotion),
         def("stop_hud_motion", &StopHudMotion),
         def("hud_motion_allowed", &AllowHudMotion),

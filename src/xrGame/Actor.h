@@ -873,6 +873,10 @@ private:
 	bool					m_disabled_hitmarks;
 	bool					m_inventory_disabled;
 	bool					m_pda_disabled;
+	bool m_bSafemode = false;
+public:
+	bool is_safemode() const { return m_bSafemode; }
+	void set_safemode(bool status);
 //static CPhysicsShell		*actor_camera_shell;
 
 	DECLARE_SCRIPT_REGISTER_FUNCTION

@@ -1170,21 +1170,6 @@ u8 get_active_cam()
 	return 255;
 }
 
-void LevelPressAction(EGameActions cmd)
-{
-	Level().IR_OnKeyboardPress(cmd);
-}
-
-void LevelReleaseAction(EGameActions cmd)
-{
-	Level().IR_OnKeyboardRelease(cmd);
-}
-
-void LevelHoldAction(EGameActions cmd)
-{
-	Level().IR_OnKeyboardHold(cmd);
-}
-
 bool valid_vertex(u32 level_vertex_id)
 {
 	return ai().level_graph().valid_vertex_id(level_vertex_id);
@@ -1818,9 +1803,6 @@ void CLevel::script_register(lua_State *L)
 		def("send", &g_send2), //allow the ability to send netpacket to level
 		def("get_target_obj", &g_get_target_obj), //intentionally named to what is in xray extensions
 		def("get_target_dist", &g_get_target_dist),
-		def("press_action", &LevelPressAction),
-		def("release_action", &LevelReleaseAction),
-		def("hold_action", &LevelHoldAction),
 		def("get_target_element", &g_get_target_element), //Can get bone cursor is targetting
 		def("get_view_entity", &get_view_entity_script),
 		def("set_view_entity", &set_view_entity_script),

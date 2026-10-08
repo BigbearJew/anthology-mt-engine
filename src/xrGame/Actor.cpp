@@ -254,8 +254,19 @@ CActor::~CActor()
 	m_rainOnHelmetSnd.destroy();
 }
 
+void CActor::set_safemode(bool status)
+{
+    if (m_bSafemode == status) return;
+    m_bSafemode = status;
+    if (g_player_hud) g_player_hud->OnMovementChanged(ACTOR_DEFS::mcAnyMove);
+    auto* weapon = inventory().ActiveItem();
+    callback(status ? GameObject::eOnWeaponLowered : GameObject::eOnWeaponRaised)(
+        weapon ? weapon->object().lua_game_object() : nullptr);
+}
+
 void CActor::reinit	()
 {
+	m_bSafemode = false;
 	character_physics_support()->movement()->CreateCharacter		();
 	character_physics_support()->movement()->SetPhysicsRefObject	(this);
 	CEntityAlive::reinit						();
@@ -981,6 +992,7 @@ void CActor::HitSignal(float perc, Fvector& vLocalDir, CObject* who, s16 element
 void start_tutorial(LPCSTR name);
 void CActor::Die	(CObject* who)
 {
+    m_bSafemode = false;
 #ifdef DEBUG
 	Msg("--- Actor [%s] dies !", this->Name());
 #endif // #ifdef DEBUG

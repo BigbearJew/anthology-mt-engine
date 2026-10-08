@@ -123,6 +123,7 @@ void STorsoWpn::Create(IKinematicsAnimated* K, LPCSTR base0, LPCSTR base1)
 		moving[eSprint] = K->ID_Cycle_Safe(xr_strconcat(buf, base0, "_torso", base1, "_escape_0"));
 	}
 
+	safemode = K->ID_Cycle_Safe(xr_strconcat(buf, base0, "_torso", base1, "_idle_1"));
 	zoom			= K->ID_Cycle_Safe(xr_strconcat(buf,base0,"_torso",base1,"_aim_0"));
 	holster			= K->ID_Cycle_Safe(xr_strconcat(buf,base0,"_torso",base1,"_holster_0"));
 	draw			= K->ID_Cycle_Safe(xr_strconcat(buf,base0,"_torso",base1,"_draw_0"));
@@ -532,7 +533,7 @@ void CActor::g_SetAnimation( u32 mstate_rl )
 								switch (W->GetState())
 								{
 								case CWeapon::eIdle:
-									M_torso = W->IsZoomed() ? TW->zoom : TW->moving[moving_idx];
+									M_torso = W->IsZoomed() ? TW->zoom : (is_safemode() && moving_idx != STorsoWpn::eSprint && TW->safemode.valid()) ? TW->safemode : TW->moving[moving_idx];
 									break;
 								case CWeapon::eFire:
 									M_torso = W->IsZoomed() ? TW->attack_zoom : TW->attack;

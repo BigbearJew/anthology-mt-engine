@@ -77,6 +77,9 @@ namespace GameObject {
 		eActorHudAnimationEnd,
 		eOnBestEnemySelected,
 
+		eOnWeaponLowered,
+		eOnWeaponRaised,
+
 		eDummy = u32(-1),
 	};
 };
