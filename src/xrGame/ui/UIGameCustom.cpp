@@ -19,6 +19,10 @@
 #include "Actor.h"
 #include "Inventory.h"
 #include "game_cl_base.h"
+#include "ai_space.h"
+#include "../xrScripts/script_engine.h"
+#include "InventoryBox.h"
+#include "../xrCore/EngineExternal.h"
 
 #include "../xrEngine/x_ray.h"
 #include "ui/UICellItem.h"
@@ -232,6 +236,12 @@ bool CUIGameCustom::ShowActorMenu()
 	}else
 	{
 		HidePdaMenu();
+		if (EngineExternal()[EEngineExternalGame::EnableAnomalyParams])
+		{
+			luabind::functor<bool> callback;
+			if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_Inventory", callback) && callback())
+				return true;
+		}
 		CInventoryOwner* pIOActor	= Level().CurrentViewEntity() != nullptr ? Level().CurrentViewEntity()->cast_inventory_owner() : nullptr;
 		VERIFY						(pIOActor);
 		m_ActorMenu->SetActor		(pIOActor);
@@ -246,6 +256,12 @@ void CUIGameCustom::HideActorMenu()
 	if ( m_ActorMenu->IsShown() )
 	{
 		m_ActorMenu->HideDialog();
+	}
+	if (EngineExternal()[EEngineExternalGame::EnableAnomalyParams])
+	{
+		luabind::functor<void> callback;
+		if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnHideActorMenu", callback))
+			callback();
 	}
 }
 
@@ -262,7 +278,7 @@ void CUIGameCustom::UpdateActorMenu()
 CScriptGameObject* CUIGameCustom::CurrentItemAtCell()
 {
 	CUICellItem* itm = m_ActorMenu->CurrentItem();
-	if (!itm->m_pData)
+	if (!itm || !itm->m_pData)
 	{
 		return 0;
 	}
@@ -314,6 +330,13 @@ void CUIGameCustom::HidePdaMenu()
 void  CUIGameCustom::StartTrade(CInventoryOwner* pActorInv, CInventoryOwner* pOtherOwner)
 {
 	//.	if( MainInputReceiver() )	return;
+	if (EngineExternal()[EEngineExternalGame::EnableAnomalyParams] && pOtherOwner)
+	{
+		luabind::functor<bool> callback;
+		CGameObject* object = smart_cast<CGameObject*>(pOtherOwner);
+		if (object && ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_Trade", callback) && callback(object->lua_game_object()))
+			return;
+	}
 
 	m_ActorMenu->SetActor(pActorInv);
 	m_ActorMenu->SetPartner(pOtherOwner);
@@ -325,6 +348,13 @@ void  CUIGameCustom::StartTrade(CInventoryOwner* pActorInv, CInventoryOwner* pOt
 void  CUIGameCustom::StartUpgrade(CInventoryOwner* pActorInv, CInventoryOwner* pMech)
 {
 	//.	if( MainInputReceiver() )	return;
+	if (EngineExternal()[EEngineExternalGame::EnableAnomalyParams] && pMech)
+	{
+		luabind::functor<bool> callback;
+		CGameObject* object = smart_cast<CGameObject*>(pMech);
+		if (object && ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_Upgrade", callback) && callback(object->lua_game_object()))
+			return;
+	}
 
 	m_ActorMenu->SetActor(pActorInv);
 	m_ActorMenu->SetPartner(pMech);
@@ -356,6 +386,13 @@ void CUIGameCustom::HideShownDialogs()
 void CUIGameCustom::StartCarBody(CInventoryOwner* pActorInv, CInventoryOwner* pOtherOwner) //Deadbody search
 {
 	if (TopInputReceiver())		return;
+	if (EngineExternal()[EEngineExternalGame::EnableAnomalyParams] && pOtherOwner)
+	{
+		luabind::functor<bool> callback;
+		CGameObject* object = smart_cast<CGameObject*>(pOtherOwner);
+		if (object && ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_DeadBodySearch", callback) && callback(object->lua_game_object()))
+			return;
+	}
 
 	m_ActorMenu->SetActor(pActorInv);
 	m_ActorMenu->SetPartner(pOtherOwner);
@@ -367,6 +404,12 @@ void CUIGameCustom::StartCarBody(CInventoryOwner* pActorInv, CInventoryOwner* pO
 void CUIGameCustom::StartCarBody(CInventoryOwner* pActorInv, CInventoryBox* pBox) //Deadbody search
 {
 	if (TopInputReceiver())		return;
+	if (EngineExternal()[EEngineExternalGame::EnableAnomalyParams] && pBox)
+	{
+		luabind::functor<bool> callback;
+		if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_DeadBodySearch", callback) && callback(pBox->lua_game_object()))
+			return;
+	}
 
 	m_ActorMenu->SetActor(pActorInv);
 	m_ActorMenu->SetInvBox(pBox);

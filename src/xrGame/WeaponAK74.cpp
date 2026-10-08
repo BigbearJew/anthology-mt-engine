@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "pch_script.h"
 #include "WeaponAK74.h"
+#include "game_cl_single.h"
 
 CWeaponAK74::CWeaponAK74(ESoundTypes eSoundType) : CWeaponMagazinedWGrenade(eSoundType)
 {}
@@ -25,6 +26,7 @@ int anomaly_ammo_total(CWeapon* w) { return w->GetSuitableAmmoTotal(); }
 float anomaly_magazine_weight(CWeapon* w) { return w->GetMagazineWeight(w->m_magazine); }
 int anomaly_ammo_count(CWeapon* w, LPCSTR section) { return w->GetAmmoCount_forType(section); }
 float anomaly_fire_dispersion(CWeapon* w) { return w->getFireDispersionBase(); }
+float anomaly_hit_power(CWeapon* w) { return w->getHitPower()[g_SingleGameDifficulty]; }
 float anomaly_shot_interval(CWeapon* w) { return w->getRPM(); }
 float anomaly_real_rpm(CWeapon* w) { return w->getRPM() > 0.f ? 60.f / w->getRPM() : 0.f; }
 void anomaly_set_shot_interval(CWeapon* w, float seconds) { if (_valid(seconds) && seconds > 0.f) w->setRPM(seconds); }
@@ -51,6 +53,8 @@ void CWeaponAK74::script_register	(lua_State *L)
 			.def("GetMagazineWeight", &anomaly_magazine_weight)
 			.def("GetAmmoCount_forType", &anomaly_ammo_count)
 			.def("GetFireDispersion", &anomaly_fire_dispersion)
+            .def("Get_PDM_Base", &CWeapon::Get_PDM_Base)
+            .def("GetHitPower", &anomaly_hit_power)
             .def("RPM", &anomaly_shot_interval)
             .def("RealRPM", &anomaly_real_rpm)
             .def("SetRPM", &anomaly_set_shot_interval)

@@ -25,10 +25,12 @@ local options = {}
 for _, item in ipairs(tree.gr) do
     if item.cmd then
         assert(item.def == nil, "do not replace current settings with preset defaults")
+        assert(item.hint == "ixray_" .. item.cmd, "MCM adds ui_mcm_ to option captions")
         options[item.cmd] = item
     end
 end
 assert(options.r_aa.content[4][1] == "taa" and options.r_aa.restart)
+assert(options.r_aa.no_str, "native tokens must not receive an addon localization prefix")
 assert(options.rs_fps_limit.max == 1000 and options.rs_fps_limit.val == 2)
 assert(options.r4_cas_sharpening.step == 0.01 and options.r4_cas_sharpening.max == 1)
 assert(options.r4_puddles.val == 1 and options.r4_puddles.restart)

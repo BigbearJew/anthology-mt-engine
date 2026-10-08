@@ -18,6 +18,16 @@ CFontManager& mngr()
 	return UI().Font();
 }
 
+// Anomaly UI commonly passes a section name or nil as a visibility condition.
+static bool lua_ui_condition(const luabind::object& value)
+{
+	lua_State* L = value.lua_state();
+	value.pushvalue();
+	const bool enabled = lua_toboolean(L, -1) != 0;
+	lua_pop(L, 1);
+	return enabled;
+}
+
 // hud font
 CGameFont* GetFontSmall()
 {
@@ -128,8 +138,10 @@ void CUIWindow::script_register(lua_State *L)
 		.def("SetHeight",				&CUIWindow::SetHeight)
 
 		.def("Enable",					&CUIWindow::Enable)
+		.def("Enable", +[](CUIWindow* self, const luabind::object& value) { self->Enable(lua_ui_condition(value)); })
 		.def("IsEnabled",				&CUIWindow::IsEnabled)
 		.def("Show",					&CUIWindow::Show)
+		.def("Show", +[](CUIWindow* self, const luabind::object& value) { self->Show(lua_ui_condition(value)); })
 		.def("IsShown",					&CUIWindow::IsShown)
 		.def("SetFont",					&CUIWindow::SetFont)
 		.def("GetFont",					&CUIWindow::GetFont)
@@ -154,6 +166,10 @@ void CUIWindow::script_register(lua_State *L)
 		.def(constructor<>())
 		.def("ShowDialog",				&CUIDialogWnd::ShowDialog)
 		.def("HideDialog",				&CUIDialogWnd::HideDialog)
+		.def("AllowMovement", &CUIDialogWnd::AllowMovement)
+		.def("AllowCursor", &CUIDialogWnd::AllowCursor)
+		.def("AllowCenterCursor", &CUIDialogWnd::AllowCenterCursor)
+		.def("AllowWorkInPause", &CUIDialogWnd::AllowWorkInPause)
 		.def("GetHolder",				&CUIDialogWnd::GetHolder),
 
 		class_<CUIFrameWindow, CUIWindow>("CUIFrameWindow")

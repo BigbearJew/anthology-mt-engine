@@ -256,7 +256,8 @@ void CUILines::ParseText(bool force)
 			{
 				bool b_last_ch = (idx == sub_len - 1);
 
-				if (isspace(sbl.m_text[idx]))
+				const unsigned int ch = utf16text ? utf16text[idx] : (u8)sbl.m_text[idx];
+				if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')
 				{
 					has_space_from_prev = false;
 					last_space_idx = idx;
@@ -283,10 +284,10 @@ void CUILines::ParseText(bool force)
 						if (utf16text != nullptr)
 						{
 							wchar_t tempbuff[4096] = {};
-							wcsncpy_s(tempbuff, sizeof(buff), utf16text + curr_w_pos, idx - curr_w_pos + 1);
+							wcsncpy_s(tempbuff, std::size(tempbuff), utf16text + curr_w_pos, idx - curr_w_pos + 1);
 
 							xr_string ValidUTF8Text = Platform::CP_TCHAR_TO_ANSI_U8(tempbuff);
-							strcpy(buff, ValidUTF8Text.c_str());
+							strncpy_s(buff, sizeof(buff), ValidUTF8Text.c_str(), _TRUNCATE);
 						}
 						else
 #endif

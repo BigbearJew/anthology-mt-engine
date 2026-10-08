@@ -42,12 +42,44 @@
 #include "Level.h"
 #include "WeaponMagazinedWGrenade.h"
 #include "HudItem.h"
+#include "ActorHelmet.h"
+#include "xrMessages.h"
 #include "player_hud.h"
 #include "ai_space.h"
 #include "../xrScripts/script_engine.h"
 
 namespace
 {
+void move_anomaly_inventory_item(CScriptGameObject* self, CScriptGameObject* object, u16 event, u16 slot = 0)
+{
+    auto* owner = self ? self->object().cast_inventory_owner() : nullptr;
+    auto* item = object ? object->object().cast_inventory_item() : nullptr;
+    if (!owner || !item || item->object().H_Parent() != &self->object()) return;
+    auto& inventory = owner->inventory();
+    if (event == GEG_PLAYER_ITEM2RUCK && !inventory.CanPutInRuck(item)) return;
+    if (event == GEG_PLAYER_ITEM2BELT && !inventory.CanPutInBelt(item)) return;
+    if (event == GEG_PLAYER_ITEM2SLOT)
+    {
+        if (slot < inventory.FirstSlot() || slot > inventory.LastSlot()) return;
+        if (!owner->CanPutInSlot(item, slot)) return;
+        auto* occupied = inventory.ItemFromSlot(slot);
+        if (occupied == item) return;
+        if (occupied)
+        {
+            if (!inventory.CanPutInRuck(occupied)) return;
+            NET_Packet packet;
+            CGameObject::u_EventGen(packet, GEG_PLAYER_ITEM2RUCK, owner->object_id());
+            packet.w_u16(occupied->object().ID());
+            CGameObject::u_EventSend(packet);
+        }
+    }
+    NET_Packet packet;
+    CGameObject::u_EventGen(packet, event, owner->object_id());
+    packet.w_u16(item->object().ID());
+    if (event == GEG_PLAYER_ITEM2SLOT) packet.w_u16(slot);
+    CGameObject::u_EventSend(packet);
+}
+
 void set_anomaly_position(CScriptGameObject* self, const Fvector& position)
 {
     auto* zone = self ? smart_cast<CCustomZone*>(&self->object()) : nullptr;
@@ -317,6 +349,13 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		.def("drop_item",					&CScriptGameObject::DropItem)
 		.def("drop_item_and_teleport",		&CScriptGameObject::DropItemAndTeleport)
 		.def("transfer_item",				&CScriptGameObject::TransferItem)
+		.def("move_to_ruck", +[](CScriptGameObject* self, CScriptGameObject* item) { move_anomaly_inventory_item(self, item, GEG_PLAYER_ITEM2RUCK); })
+		.def("move_to_belt", +[](CScriptGameObject* self, CScriptGameObject* item) { move_anomaly_inventory_item(self, item, GEG_PLAYER_ITEM2BELT); })
+		.def("move_to_slot", +[](CScriptGameObject* self, CScriptGameObject* item, u16 slot) { move_anomaly_inventory_item(self, item, GEG_PLAYER_ITEM2SLOT, slot); })
+		.def("force_unload_magazine", +[](CScriptGameObject* self, bool keepAmmo) {
+            auto* weapon = self ? smart_cast<CWeaponMagazined*>(&self->object()) : nullptr;
+            if (weapon) weapon->UnloadMagazine(keepAmmo);
+        })
 		.def("transfer_money",				&CScriptGameObject::TransferMoney)
 		.def("give_money",					&CScriptGameObject::GiveMoney)
 		.def("money",						&CScriptGameObject::Money)
@@ -572,6 +611,7 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		.def("cast_EatableItem", &CScriptGameObject::cast_EatableItem)
 		.def("cast_Antirad", &CScriptGameObject::cast_Antirad)
 		.def("cast_CustomOutfit", &CScriptGameObject::cast_CustomOutfit)
+		.def("cast_Helmet", +[](CScriptGameObject* self) -> CHelmet* { return self ? self->object().cast_helmet() : nullptr; })
 		.def("cast_Scope", &CScriptGameObject::cast_Scope)
 		.def("cast_Silencer", &CScriptGameObject::cast_Silencer)
 		.def("cast_GrenadeLauncher", &CScriptGameObject::cast_GrenadeLauncher)

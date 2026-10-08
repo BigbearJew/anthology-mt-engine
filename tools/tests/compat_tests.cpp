@@ -68,6 +68,15 @@ int main(int argc, char** argv)
     const bool lua_test = argc > 1 && strcmp(argv[1], "--lua") == 0;
     Core._initialize("AnthologyIXRayTests", nullptr, vfs || lua_test,
         vfs ? "fsgame_ixray.ltx" : lua_test ? "fsgame_test.ltx" : nullptr);
+    const std::wstring long_text(5000, L'\u042f');
+    const xr_string long_utf8 = Platform::CP_TCHAR_TO_ANSI_U8(long_text.c_str());
+    check(long_utf8.size() == 10000 && std::wstring(Platform::ANSI_TO_TCHAR(long_utf8.c_str())) == long_text,
+        "long Cyrillic UTF-8 round trip exceeds old 256/4096 buffers safely");
+    const xr_string long_cp1251 = Platform::TCHAR_TO_ANSI_U8(long_text.c_str());
+    check(long_cp1251.size() == 5000 && (u8)long_cp1251.back() == 0xdf,
+        "legacy wide-to-ANSI preserves CP1251 encoding for long UI text");
+    check(Platform::CP_TCHAR_TO_ANSI_U8(L"").empty() && !*Platform::ANSI_TO_TCHAR(""),
+        "empty Unicode conversion remains terminated");
     with_ini("@[new]\nvalue=17\n", [](const CInifile& ini) {
         check(ini.section_exist("new") && ini.r_u32("new", "value") == 17, "safe override creates section");
     });

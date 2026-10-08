@@ -16,6 +16,8 @@ void CUIProgressBar::script_register(lua_State *L)
 		.def("SetRange", &CUIProgressBar::SetRange)
 		.def("SetProgressPos",			&CUIProgressBar::SetProgressPos)
 		.def("GetProgressPos",			&CUIProgressBar::GetProgressPos)
+		.def("ShowBackground", &CUIProgressBar::ShowBackground)
+		.def("IsShownBackground", &CUIProgressBar::IsShownBackground)
 
 		.def("GetRange_min",			&CUIProgressBar::GetRange_min)
 		.def("GetRange_max",			&CUIProgressBar::GetRange_max)

@@ -67,7 +67,7 @@ CGameFont::CGameFont(const char* section, u32 flags) : Name(section), LineSpacin
 CGameFont::~CGameFont()
 {
 	// Shading
-	FT_Done_Face(OurFont);
+	if (OurFont) FT_Done_Face(OurFont);
 
 	RenderFactory->DestroyFontRender(pFontRender);
 	pFontRender = nullptr;
@@ -84,10 +84,76 @@ void CGameFont::ReInit()
 
 void CGameFont::Prepare(const char* name, const char* shader, const char* style, u32 size)
 {
+	if (InitializeBitmap(shader)) return;
 	Initialize2(name, shader, style, size);
 }
 
 wchar_t TranslateSymbolUsingCP1251(char Symbol);
+
+bool CGameFont::InitializeBitmap(const char* shader)
+{
+	if (!pSettings->line_exist(Name, "texture")) return false;
+	const char* keys[] = {"texture800", "texture", "texture1600", "texture2160"};
+	const u32 height = Device.TargetHeight;
+	int index = height <= 600 ? 0 : height < 1024 ? 1 : height < 1440 ? 2 : 3;
+	while (index > 0 && !pSettings->line_exist(Name, keys[index])) --index;
+	const char* key = pSettings->line_exist(Name, keys[index]) ? keys[index] : "texture";
+	xr_string texture = pSettings->r_string(Name, key);
+	const bool noPrefix = texture.find("ui_font_hud_0") != xr_string::npos || texture.find("ui_font_console_02") != xr_string::npos;
+	if (!noPrefix && pSettings->line_exist("string_table", "font_prefix"))
+	{
+		const char* prefix = pSettings->r_string("string_table", "font_prefix");
+		if (prefix) texture += prefix;
+	}
+	string_path path;
+	if (!FS.exist(path, "$game_textures$", texture.c_str(), ".ini"))
+	{
+		Msg("! [IX-Ray font] Bitmap metrics unavailable for %s; using TrueType", texture.c_str());
+		return false;
+	}
+	CInifile* ini = CInifile::Create(path);
+	GlyphData.clear();
+	BitmapInterval = 1.f;
+	LetterSpacing = 0.f;
+	if (pSettings->line_exist(Name, "interval")) BitmapInterval = pSettings->r_fvector2(Name, "interval").x;
+	const bool multibyte = ini->section_exist("mb_symbol_coords");
+	const bool coords = ini->section_exist("symbol_coords");
+	const bool widths = ini->section_exist("char widths");
+	const char* section = multibyte ? "mb_symbol_coords" : coords ? "symbol_coords" : widths ? "char widths" : "font_size";
+	fCurrentHeight = ini->r_float(section, "height");
+	R_ASSERT2(fCurrentHeight > 0.f && _valid(fCurrentHeight), "Invalid bitmap font height");
+	Size = (u32)fCurrentHeight;
+	for (u32 code = 0; code < (multibyte ? 65536u : 256u); ++code)
+	{
+		string16 symbol;
+		xr_sprintf(symbol, multibyte ? "%05u" : coords ? "%03u" : "%u", code);
+		Fvector rect;
+		if (multibyte || coords)
+		{
+			if (!ini->line_exist(section, symbol)) continue;
+			rect = ini->r_fvector3(section, symbol);
+			rect.z = rect.z - rect.x + (multibyte ? 1.f : 0.f);
+		}
+		else if (widths)
+			rect.set((code % 16) * fCurrentHeight, (code / 16) * fCurrentHeight, ini->r_float(section, symbol));
+		else
+		{
+			const float width = ini->r_float(section, "width");
+			const int columns = ini->r_s32(section, "cpl");
+			R_ASSERT(columns > 0);
+			rect.set((code % columns) * width, (code / columns) * fCurrentHeight, width);
+		}
+		Glyph glyph{};
+		glyph.TextureCoord = {(LONG)rect.x, (LONG)rect.y, (LONG)(rect.x + rect.z), (LONG)(rect.y + fCurrentHeight)};
+		glyph.Abc.abcB = (UINT)std::max(0.f, rect.z);
+		GlyphData[code] = glyph;
+		if (!multibyte && code >= 128) GlyphData[TranslateSymbolUsingCP1251((char)code)] = glyph;
+	}
+	CInifile::Destroy(ini);
+	pFontRender->Initialize(shader, texture.c_str());
+	Msg("* [IX-Ray font] Bitmap %s: %s, height %.0f", Name, texture.c_str(), fCurrentHeight);
+	return true;
+}
 
 xr_vector<xr_string> split(const xr_string& s, char delim)
 {
@@ -107,6 +173,13 @@ extern xr_vector<u32> FontBitmap;
 
 void CGameFont::Initialize2(const char* name, const char* shader, const char* style, u32 size)
 {
+	if (OurFont)
+	{
+		FT_Done_Face(OurFont);
+		OurFont = nullptr;
+	}
+	GlyphData.clear();
+	BitmapInterval = 1.f;
 	if (!bFreetypeInitialized)
 	{
 		InitializeFreetype();
@@ -185,7 +258,10 @@ void CGameFont::Initialize2(const char* name, const char* shader, const char* st
 		R_ASSERT3(FontFile != nullptr, "Can't find default font: %s", DefPath);
 	}
 
-	FT_Error FTError = FT_New_Memory_Face(FreetypeLib, (FT_Byte*)FontFile->pointer(), FontFile->length(), 0, &OurFont);
+	FontSource.resize(FontFile->length());
+	memcpy(FontSource.data(), FontFile->pointer(), FontSource.size());
+	FS.r_close(FontFile);
+	FT_Error FTError = FT_New_Memory_Face(FreetypeLib, FontSource.data(), (FT_Long)FontSource.size(), 0, &OurFont);
 	R_ASSERT3(FTError == 0, "FT_New_Memory_Face return error", FullPath);
 
 	u32 TargetX = 0;
@@ -353,7 +429,6 @@ void CGameFont::Initialize2(const char* name, const char* shader, const char* st
 
 	pFontRender->CreateFontAtlas(TextureDimension, TargetDemensionY, textureName, FontBitmap.data());
 
-	FS.r_close(FontFile);
 	pFontRender->Initialize(shader, textureName);
 }
 
@@ -408,7 +483,7 @@ void CGameFont::MasterOut(
 	rs.align = eCurrentAlignment;
 	rs.gradient = fGradientEnabled;
 	rs.gradientMode = fGradientMode;
-	int vs_sz = vsprintf(rs.string, fmt, p);
+	int vs_sz = vsnprintf(rs.string, sizeof(rs.string), fmt, p);
 
 	if (!IsUTF8(rs.string))
 	{
@@ -416,7 +491,7 @@ void CGameFont::MasterOut(
 	}
 	
 	rs.string[sizeof(rs.string) - 1] = 0;
-	if (vs_sz == -1)
+	if (vs_sz < 0)
 	{
 		return;
 	}
@@ -501,9 +576,9 @@ float CGameFont::WidthOf(int ch)
 		return 0.f;
 
 	if (const Glyph* glyphInfo = GetGlyphInfo(ch))
-		return float(glyphInfo->Abc.abcA + glyphInfo->Abc.abcB + glyphInfo->Abc.abcC);
+		return float(glyphInfo->Abc.abcA + glyphInfo->Abc.abcB + glyphInfo->Abc.abcC) * BitmapInterval;
 
-	return float(OurFont->glyph->metrics.width) / 64.f;
+	return OurFont ? float(OurFont->glyph->metrics.width) / 64.f : fCurrentHeight * 0.5f;
 }
 
 float CGameFont::WidthOf(const char* str)

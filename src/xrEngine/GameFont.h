@@ -65,7 +65,7 @@ private:
 		const char* Style;
 	};
 
-	BaseData Data;
+	BaseData Data{};
 protected:
 	float fCurrentHeight = 0.0f;
 	float fCurrentX = 0.0f;
@@ -74,10 +74,10 @@ protected:
 	EGradientMode fGradientMode = gm_vert;
 
 	u32 uFlags;
-	u32 dwCurrentColor;
-	u32 dwGradientColor;
+	u32 dwCurrentColor = 0xffffffff;
+	u32 dwGradientColor = 0xffffffff;
 
-	EAligment eCurrentAlignment;
+	EAligment eCurrentAlignment = alLeft;
 	xrCriticalSection s_cs;
 	xr_vector<String> strings;
 	IFontRender* pFontRender;
@@ -203,11 +203,15 @@ private:
 
 	u32 Size;
 	Style Style;
-	FT_Face OurFont;
+	FT_Face OurFont = nullptr;
+	// FreeType retains this memory until FT_Done_Face.
+	xr_vector<u8> FontSource;
+	float BitmapInterval = 1.0f;
 
 	xr_map<int, Glyph> GlyphData;
 
 	void Prepare(const char* name, const char* shader, const char* style, u32 size);
+	bool InitializeBitmap(const char* shader);
 	void Initialize(const char* name, const char* shader, const char* style, u32 size);
 	void Initialize2(const char* name, const char* shader, const char* style, u32 size);
 

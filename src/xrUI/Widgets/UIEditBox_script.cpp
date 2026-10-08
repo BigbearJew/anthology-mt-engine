@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "UIEditBox.h"
+#include "UILuaText.h"
 
 #include <luabind/luabind.hpp>
 
@@ -12,6 +13,7 @@ void CUIEditBox::script_register(lua_State *L)
 	[
 		class_<CUICustomEdit, CUIWindow>("CUICustomEdit")
 		.def("SetText",				&CUICustomEdit::SetText)
+        .def("SetText", &set_lua_text<CUICustomEdit>)
 		.def("GetText",				&CUICustomEdit::GetText)
 		.def("CaptureFocus",		&CUICustomEdit::CaptureFocus)
 		.def("SetNextFocusCapturer",&CUICustomEdit::SetNextFocusCapturer),		

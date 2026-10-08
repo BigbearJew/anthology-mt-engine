@@ -3,13 +3,11 @@
 
 XRCORE_API wchar_t* Platform::ANSI_TO_TCHAR(const char* C)
 {
-	int len = (int)strlen(C);
-	static thread_local wchar_t WName[4096];
-	RtlZeroMemory(&WName, sizeof(WName));
-
-	// Converts the path to wide characters
-	[[maybe_unused]] int needed = MultiByteToWideChar(CP_UTF8, 0, C, len + 1, WName, len + 1);
-	return WName;
+	static thread_local std::vector<wchar_t> buffer;
+	const int needed = C ? MultiByteToWideChar(CP_UTF8, 0, C, -1, nullptr, 0) : 0;
+	buffer.assign(std::max(needed, 1), L'\0');
+	if (needed) MultiByteToWideChar(CP_UTF8, 0, C, -1, buffer.data(), needed);
+	return buffer.data();
 }
 
 XRCORE_API xr_string Platform::ANSI_TO_UTF8(const xr_string& ansi)
@@ -59,26 +57,25 @@ XRCORE_API wchar_t* Platform::ANSI_TO_TCHAR_U8(const char* C)
 	return ANSI_TO_TCHAR(ANSI_TO_UTF8(C).c_str());
 }
 
+static xr_string from_wide(const wchar_t* input, UINT codepage)
+{
+	if (!input || !*input) return {};
+	const int length = (int)wcslen(input);
+	const int size = WideCharToMultiByte(codepage, 0, input, length, nullptr, 0, nullptr, nullptr);
+	if (size <= 0) return {};
+	xr_string result;
+	result.resize(size, '\0');
+	if (!WideCharToMultiByte(codepage, 0, input, length, result.data(), size, nullptr, nullptr)) return {};
+	return result;
+}
+
 XRCORE_API xr_string Platform::TCHAR_TO_ANSI_U8(const wchar_t* input)
 {
-	int size = WideCharToMultiByte(CP_UTF8, 0, input, (int)wcslen(input), 0, 0,
-		nullptr, nullptr);
-
-	static thread_local char buf[256] = {};
-	std::memset(&buf, 0, 256);
-
-	WideCharToMultiByte(1251, 0, input, (int)wcslen(input), buf, size, nullptr, nullptr);
-	return buf;
+	// Keep the legacy CP1251 return encoding despite the historical function name.
+	return from_wide(input, 1251);
 }
 
 XRCORE_API xr_string Platform::CP_TCHAR_TO_ANSI_U8(const wchar_t* input)
 {
-	int size = WideCharToMultiByte(CP_UTF8, 0, input, (int)wcslen(input), 0, 0,
-		nullptr, nullptr);
-
-	static thread_local char buf[256] = {};
-	std::memset(&buf, 0, 256);
-
-	WideCharToMultiByte(CP_UTF8, 0, input, (int)wcslen(input), buf, size, nullptr, nullptr);
-	return buf;
+	return from_wide(input, CP_UTF8);
 }

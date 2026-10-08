@@ -3,6 +3,7 @@
 #include "ActorCondition.h"
 #include "EntityCondition.h"
 #include "Wound.h"
+#include "../xrCore/EngineExternal.h"
 
 using namespace luabind;
 
@@ -10,11 +11,14 @@ class CActorCondition;
 
 void BoosterForEach(CActorCondition* conditions, const luabind::functor<bool> &funct)
 {
-	CEntityCondition::BOOSTER_MAP& cur_booster_influences = conditions->GetCurBoosterInfluences();
+	// A Lua callback may modify boosters. IX-Ray also retains inactive map entries.
+	const auto cur_booster_influences = conditions->GetCurBoosterInfluences();
 	CEntityCondition::BOOSTER_MAP::const_iterator it = cur_booster_influences.begin();
 	CEntityCondition::BOOSTER_MAP::const_iterator it_e = cur_booster_influences.end();
 	for (; it != it_e; ++it)
 	{
+        if (EngineExternal()[EEngineExternalGame::EnableAnomalyParams] && it->second.fBoostTime <= 0.f)
+            continue;
 		if (funct((*it).first, (*it).second.fBoostTime, (*it).second.fBoostValue) == true)
 			break;
 	}

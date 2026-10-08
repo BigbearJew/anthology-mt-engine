@@ -14,6 +14,7 @@
 #include "uiabstract.h"
 #include "xrUIXmlParser.h"
 #include "../Include/xrRender/UIShader.h"
+#include "../xrCore/EngineExternal.h"
 
 xr_map<shared_str, TEX_INFO>	CUITextureMaster::m_textures;
 xr_map<sh_pair, ui_shader>		CUITextureMaster::m_shaders;
@@ -58,7 +59,17 @@ void CUITextureMaster::ParseShTexInfo(LPCSTR xml_file)
 			info.rect.y1 = xml.ReadAttribFlt(node, "texture",i,"y") * fileScale;
 			info.rect.y2 = xml.ReadAttribFlt(node, "texture",i,"height") * fileScale + info.rect.y1;
 			shared_str id = xml.ReadAttrib	(node, "texture",i,"id");
-			m_textures.insert(std::make_pair(id,info));
+			// Anomaly UI skins redefine atlas IDs after the base descriptors.
+			if (EngineExternal()[EEngineExternalGame::EnableAnomalyParams])
+			{
+				const auto previous = m_textures.find(id);
+				if (previous != m_textures.end() && strstr(Core.Params, "-ixray_ui_probe"))
+					Msg("[IX-Ray UI probe] Atlas override %s in %s: %s -> %s", id.c_str(), xml_file,
+						previous->second.file.c_str(), info.file.c_str());
+				m_textures.insert_or_assign(id, info);
+			}
+			else
+				m_textures.insert(std::make_pair(id,info));
 		}
 
 		xml.SetLocalRoot		(root_node);

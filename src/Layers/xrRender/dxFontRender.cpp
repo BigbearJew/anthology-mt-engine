@@ -15,9 +15,7 @@ dxFontRender::~dxFontRender() {
 }
 
 void dxFontRender::Initialize(const char* cShader, const char* cTexture) {
-	if(pTexture._get() == nullptr) {
-		pTexture.create(cTexture);
-	}
+	pTexture.create(cTexture);
 
 	pShader.create(cShader, cTexture);
 	pGeom.create(FVF::F_TL, RCache.Vertex.Buffer(), RCache.QuadIB);
@@ -84,7 +82,9 @@ void dxFontRender::OnRender(CGameFont& owner)
 				UniStr = Platform::ANSI_TO_TCHAR(str.string_utf8.c_str());
 			}
 
-			for(int i = 0; i < length; i++) 
+			// UTF-8 byte length is only an allocation upper bound, not a glyph count.
+			const int glyphCount = IsUTF8Str ? (int)std::wcslen(UniStr) : length;
+			for(int i = 0; i < glyphCount; i++)
 			{
 				CGameFont::Glyph* glyphInfo = nullptr;
 
@@ -161,7 +161,7 @@ void dxFontRender::OnRender(CGameFont& owner)
 					vertexes->set(X2, GlyphY, clr, u2, v1);
 					++vertexes;
 				}
-				X = X2 + glyphInfo->Abc.abcC + owner.GetLetterSpacing();
+				X += (glyphInfo->Abc.abcB + glyphInfo->Abc.abcC) * owner.BitmapInterval + owner.GetLetterSpacing();
 			}
 
 			// Unlock and draw

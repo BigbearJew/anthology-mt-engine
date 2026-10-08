@@ -8,6 +8,9 @@ class UI_API CUIDialogWnd : public CUIWindow
 private:
 	typedef CUIWindow inherited;
 	CDialogHolder*					m_pParentHolder;
+	bool m_allowMovement = false;
+	bool m_needCursor = true;
+	bool m_centerCursor = true;
 protected:
 public:
 	bool										m_bWorkInPause;
@@ -21,9 +24,13 @@ public:
 
 	CDialogHolder* GetHolder					()								{return m_pParentHolder;};
 			void SetHolder						(CDialogHolder* h)				{m_pParentHolder = h;};
-	virtual bool StopAnyMove					()								{return true;}
-	virtual bool NeedCursor						()const							{return true;}
-	virtual bool NeedCenterCursor				()const							{return true;}
+	void AllowMovement(bool value) { m_allowMovement = value; }
+	void AllowCursor(bool value) { m_needCursor = value; }
+	void AllowCenterCursor(bool value) { m_centerCursor = value; }
+	void AllowWorkInPause(bool value) { m_bWorkInPause = value; }
+	virtual bool StopAnyMove() { return !m_allowMovement; }
+	virtual bool NeedCursor() const { return m_needCursor; }
+	virtual bool NeedCenterCursor() const { return m_centerCursor; }
 	virtual bool WorkInPause					()const							{return m_bWorkInPause;}
 	virtual bool Dispatch						(int cmd, int param)			{return true;}
     virtual void ShowOrHideDialog				(bool bDoHideIndicators);
