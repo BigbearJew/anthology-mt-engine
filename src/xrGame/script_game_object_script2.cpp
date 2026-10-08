@@ -32,6 +32,24 @@
 #include "patrol_path_manager_space.h"
 #include "InventoryOwner.h"
 
+#include "entity_alive.h"
+#include "EntityCondition.h"
+#include "../xrCore/EngineExternal.h"
+
+// Anomaly properties assign absolute values; change_* retains native delta semantics.
+template <auto LegacyChange, auto AbsoluteSet>
+void set_anomaly_condition_property(CScriptGameObject* self, float value)
+{
+    if (!self || !_valid(value)) return;
+    if (!EngineExternal()[EEngineExternalGame::EnableAnomalyParams])
+    {
+        (self->*LegacyChange)(value);
+        return;
+    }
+    CEntityAlive* entity = self->object().cast_entity_alive();
+    if (entity) (entity->conditions().*AbsoluteSet)(value);
+}
+
 using namespace luabind;
 
 extern CScriptActionPlanner *script_action_planner(CScriptGameObject *obj);
@@ -73,12 +91,24 @@ class_<CScriptGameObject> script_register_game_object1(class_<CScriptGameObject>
 //		.property("enabled",				&CScriptGameObject::getEnabled,			&CScriptGameObject::setEnabled)
 
 //		.def_readonly("health",				&CScriptGameObject::GetHealth,			&CScriptGameObject::SetHealth)
-		.property("health",					&CScriptGameObject::GetHealth,			&CScriptGameObject::SetHealth)
-		.property("psy_health",				&CScriptGameObject::GetPsyHealth,		&CScriptGameObject::SetPsyHealth)
-		.property("power",					&CScriptGameObject::GetPower,			&CScriptGameObject::SetPower)
-		.property("satiety",				&CScriptGameObject::GetSatiety,			&CScriptGameObject::ChangeSatiety)
-		.property("radiation",				&CScriptGameObject::GetRadiation,		&CScriptGameObject::SetRadiation)
-		.property("morale",					&CScriptGameObject::GetMorale,			&CScriptGameObject::SetMorale)
+		.property("health", &CScriptGameObject::GetHealth,
+            &set_anomaly_condition_property<&CScriptGameObject::SetHealth, &CEntityCondition::SetHealth>)
+		.property("psy_health", &CScriptGameObject::GetPsyHealth,
+            &set_anomaly_condition_property<&CScriptGameObject::SetPsyHealth, &CEntityCondition::SetPsyHealth>)
+		.property("power", &CScriptGameObject::GetPower,
+            &set_anomaly_condition_property<&CScriptGameObject::SetPower, &CEntityCondition::SetPower>)
+		.property("satiety", &CScriptGameObject::GetSatiety,
+            &set_anomaly_condition_property<&CScriptGameObject::ChangeSatiety, &CEntityCondition::SetSatiety>)
+		.property("radiation", &CScriptGameObject::GetRadiation,
+            &set_anomaly_condition_property<&CScriptGameObject::SetRadiation, &CEntityCondition::SetRadiation>)
+		.property("morale", &CScriptGameObject::GetMorale,
+            &set_anomaly_condition_property<&CScriptGameObject::SetMorale, &CEntityCondition::SetEntityMorale>)
+        .def("change_health", &CScriptGameObject::SetHealth)
+        .def("change_psy_health", &CScriptGameObject::SetPsyHealth)
+        .def("change_power", &CScriptGameObject::SetPower)
+        .def("change_satiety", &CScriptGameObject::ChangeSatiety)
+        .def("change_radiation", &CScriptGameObject::SetRadiation)
+        .def("change_morale", &CScriptGameObject::SetMorale)
 		.property("bleeding",				&CScriptGameObject::GetBleeding,		&CScriptGameObject::SetBleeding)
 		.property("thirst",					&CScriptGameObject::GetThirst,			&CScriptGameObject::SetThirst)
 		.property("sleepiness",				&CScriptGameObject::GetSleepiness,		&CScriptGameObject::SetSleepiness)

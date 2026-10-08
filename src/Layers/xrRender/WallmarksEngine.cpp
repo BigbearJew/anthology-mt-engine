@@ -84,6 +84,7 @@ CWallmarksEngine::static_wallmark*	CWallmarksEngine::static_wm_allocate		()
 	else { W = static_pool.back(); static_pool.pop_back(); }
 
 	W->ttl				= ps_r__WallmarkTTL;
+    W->script_ttl = 0.f;
 	W->verts.clear		();
 	return W;
 }
@@ -95,7 +96,7 @@ void		CWallmarksEngine::static_wm_destroy		(CWallmarksEngine::static_wallmark*	W
 // render
 void		CWallmarksEngine::static_wm_render		(CWallmarksEngine::static_wallmark*	W, FVF::LIT* &V)
 {
-	float		a		= 1-(W->ttl/ps_r__WallmarkTTL);
+	float		a		= 1-(W->ttl/(W->script_ttl > 0.f ? W->script_ttl : ps_r__WallmarkTTL));
 	int			aC		= iFloor	( a * 255.f);	clamp	(aC,0,255);
 	u32			C		= color_rgba(128,128,128,aC);
 	FVF::LIT*	S		= &*W->verts.begin	();
@@ -180,7 +181,7 @@ void CWallmarksEngine::BuildMatrix	(Fmatrix &mView, float invsz, const Fvector& 
 	mView.mulA_43		(mScale);
 }
 
-void CWallmarksEngine::AddWallmark_internal	(CDB::TRI* pTri, const Fvector* pVerts, const Fvector &contact_point, ref_shader hShader, float sz, bool UseCameraDirection)
+void CWallmarksEngine::AddWallmark_internal	(CDB::TRI* pTri, const Fvector* pVerts, const Fvector &contact_point, ref_shader hShader, float sz, bool UseCameraDirection, float scriptTTL, float scriptRotation)
 {
 	// query for polygons in bounding box
 	// calculate adjacency
@@ -217,7 +218,11 @@ void CWallmarksEngine::AddWallmark_internal	(CDB::TRI* pTri, const Fvector* pVer
 	Fmatrix				mView,mRot;
 	BuildMatrix			(mView,1/sz,contact_point);
 
-	if (UseCameraDirection)
+	if (scriptTTL > 0.f)
+	{
+		mRot.rotateZ(deg2rad(scriptRotation));
+	}
+	else if (UseCameraDirection)
 	{
 		mRot.rotateZ(::Random.randF(-0.175f, 0.175f) - Device.vCameraDirection.getH());
 	}
@@ -231,6 +236,7 @@ void CWallmarksEngine::AddWallmark_internal	(CDB::TRI* pTri, const Fvector* pVer
 
 	// create wallmark
 	static_wallmark* W	= static_wm_allocate();
+    if (_valid(scriptTTL) && scriptTTL > 0.f) W->ttl = W->script_ttl = scriptTTL;
 	RecurseTri			(0, mView, *W);
 
 	// calc sphere
@@ -279,7 +285,7 @@ void CWallmarksEngine::AddWallmark_internal	(CDB::TRI* pTri, const Fvector* pVer
 	//}
 }
 
-void CWallmarksEngine::AddStaticWallmark	(CDB::TRI* pTri, const Fvector* pVerts, const Fvector &contact_point, ref_shader hShader, float sz, bool UseCameraDirection)
+void CWallmarksEngine::AddStaticWallmark	(CDB::TRI* pTri, const Fvector* pVerts, const Fvector &contact_point, ref_shader hShader, float sz, bool UseCameraDirection, float scriptTTL, float scriptRotation)
 {
 	// optimization cheat: don't allow wallmarks more than 100 m from viewer/actor
 	if (contact_point.distance_to_sqr(Device.vCameraPosition) > _sqr(100.f))	
@@ -287,7 +293,7 @@ void CWallmarksEngine::AddStaticWallmark	(CDB::TRI* pTri, const Fvector* pVerts,
 
 	// Physics may add wallmarks in parallel with rendering
 	lock.Enter				();
-	AddWallmark_internal	(pTri,pVerts,contact_point,hShader,sz, UseCameraDirection);
+	AddWallmark_internal	(pTri,pVerts,contact_point,hShader,sz, UseCameraDirection, scriptTTL, scriptRotation);
 	lock.Leave				();
 }
 
@@ -393,7 +399,7 @@ void CWallmarksEngine::Render()
 						}
 						static_wm_render	(W,w_verts);
 					}
-					W->ttl	-= 0.1f*Device.fTimeDelta;	// visible wallmarks fade much slower
+					W->ttl	-= (W->script_ttl > 0.f ? 1.f : 0.1f)*Device.fTimeDelta;	// visible wallmarks fade much slower
 				} else {
 					W->ttl	-= Device.fTimeDelta;
 				}

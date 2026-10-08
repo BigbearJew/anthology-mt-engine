@@ -54,6 +54,12 @@ void set_anomaly_position(CScriptGameObject* self, const Fvector& position)
     if (zone) zone->MoveScript(position);
 }
 
+template <auto Cast>
+bool is_anomaly_object_type(CScriptGameObject* self)
+{
+    return self && (self->object().*Cast)() != nullptr;
+}
+
 CWeapon* cast_anomaly_weapon(CScriptGameObject* self)
 {
     return self ? self->object().cast_weapon() : nullptr;
@@ -637,6 +643,27 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		.def("ammo_get_count",				&CScriptGameObject::AmmoGetCount)
 		.def("ammo_set_count",				&CScriptGameObject::AmmoSetCount)
 		.def("ammo_box_size",				&CScriptGameObject::AmmoBoxSize)
+        .def("is_entity_alive", &is_anomaly_object_type<&CGameObject::cast_entity_alive>)
+        .def("is_inventory_item", &is_anomaly_object_type<&CGameObject::cast_inventory_item>)
+        .def("is_inventory_owner", &is_anomaly_object_type<&CGameObject::cast_inventory_owner>)
+        .def("is_actor", &is_anomaly_object_type<&CGameObject::cast_actor>)
+        .def("is_custom_monster", &is_anomaly_object_type<&CGameObject::cast_custom_monster>)
+        .def("is_weapon", &is_anomaly_object_type<&CGameObject::cast_weapon>)
+        .def("is_outfit", &is_anomaly_object_type<&CGameObject::cast_outfit>)
+        .def("is_helmet", &is_anomaly_object_type<&CGameObject::cast_helmet>)
+        .def("is_scope", &is_anomaly_object_type<&CGameObject::cast_addon_scope>)
+        .def("is_silencer", &is_anomaly_object_type<&CGameObject::cast_addon_silencer>)
+        .def("is_grenade_launcher", &is_anomaly_object_type<&CGameObject::cast_addon_grenade_launcher>)
+        .def("is_weapon_magazined", &is_anomaly_object_type<&CGameObject::cast_weapon_magazined>)
+        .def("is_space_restrictor", &is_anomaly_object_type<&CGameObject::cast_restrictor>)
+        .def("is_stalker", &is_anomaly_object_type<&CGameObject::cast_stalker>)
+        .def("is_anomaly", &is_anomaly_object_type<&CGameObject::cast_custom_zone>)
+        .def("is_monster", &is_anomaly_object_type<&CGameObject::cast_base_monster>)
+        .def("is_trader", &is_anomaly_object_type<&CGameObject::cast_trader>)
+        .def("is_hud_item", &is_anomaly_object_type<&CGameObject::cast_hud_item>)
+        .def("is_artefact", &is_anomaly_object_type<&CGameObject::cast_artefact>)
+        .def("is_weapon_gl", &is_anomaly_object_type<&CGameObject::cast_weapon_magazined_w_grenade>)
+        .def("is_inventory_box", &is_anomaly_object_type<&CGameObject::cast_inventory_box>)
 		.def("is_ammo",						&CScriptGameObject::IsAmmo)
 		// Actor
 		.def("set_character_icon", &CScriptGameObject::SetCharacterIcon)

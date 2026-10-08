@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "Artefact.h"
+#include "../xrCore/EngineExternal.h"
 #include "../xrPhysics/PhysicsShell.h"
 #include "PhysicsShellHolder.h"
 #include "game_cl_base.h"
@@ -56,40 +57,45 @@ void CArtefact::Load(LPCSTR section)
 	if (pSettings->line_exist(section, "particles"))
 		m_sParticlesName	= pSettings->r_string(section, "particles");
 
-	if (pSettings->line_exist(section, "particles_bones"))
-	{
-		m_sParticlesBone = nullptr;
-		CParticlesPlayer::LoadParticles(section,"particles_bones",PKinematics(Visual()));
-	}
-	else
-	{
-		if (pSettings->line_exist(section, "particles_bone"))
+    // Anomaly ignores these legacy config bone names and uses model particle bones.
+    if (!READ_IF_EXISTS(pSettings, r_bool, section, "anomaly_params",
+        EngineExternal()[EEngineExternalGame::EnableAnomalyParams]))
+    {
+		if (pSettings->line_exist(section, "particles_bones"))
 		{
-			m_sParticlesBone = pSettings->r_string(section, "particles_bone");
-			int count = _GetItemCount(m_sParticlesBone.c_str());
-			if(count>1)
+			m_sParticlesBone = nullptr;
+			CParticlesPlayer::LoadParticles(section,"particles_bones",PKinematics(Visual()));
+		}
+		else
+		{
+			if (pSettings->line_exist(section, "particles_bone"))
 			{
-				CParticlesPlayer::LoadParticles(section,"particles_bone",PKinematics(Visual()));
-				m_sParticlesBone = nullptr;
-			}
-			else
-			{
-				IKinematics* K			= PKinematics(Visual());
-				R_ASSERT2				(K, cNameSect().c_str());
-				u16 bone_id				= K->LL_BoneID(m_sParticlesBone.c_str());
-				
-				if (bone_id == BI_NONE)
+				m_sParticlesBone = pSettings->r_string(section, "particles_bone");
+				int count = _GetItemCount(m_sParticlesBone.c_str());
+				if(count>1)
 				{
-					shared_str message;
-					message.printf("Can`t find particle bone [%s] in [%s] section", m_sParticlesBone.c_str(), section);
-					
-					R_ASSERT2(bone_id!=BI_NONE, message.c_str());
+					CParticlesPlayer::LoadParticles(section,"particles_bone",PKinematics(Visual()));
+					m_sParticlesBone = nullptr;
 				}
+				else
+				{
+					IKinematics* K			= PKinematics(Visual());
+					R_ASSERT2				(K, cNameSect().c_str());
+					u16 bone_id				= K->LL_BoneID(m_sParticlesBone.c_str());
 
-				CParticlesPlayer::AppendBone(bone_id);
+					if (bone_id == BI_NONE)
+					{
+						shared_str message;
+						message.printf("Can`t find particle bone [%s] in [%s] section", m_sParticlesBone.c_str(), section);
+
+						R_ASSERT2(bone_id!=BI_NONE, message.c_str());
+					}
+
+					CParticlesPlayer::AppendBone(bone_id);
+				}
 			}
 		}
-	}
+    }
 
 	m_bLightsEnabled		= !!pSettings->r_bool(section, "lights_enabled");
 	if(m_bLightsEnabled){
@@ -127,7 +133,7 @@ BOOL CArtefact::net_Spawn(CSE_Abstract* DC)
 	StartLights();
 	m_CarringBoneID					= u16(-1);
 	IKinematicsAnimated	*K			= smart_cast<IKinematicsAnimated*>(Visual());
-	if(K)
+	if(K && K->ID_Cycle_Safe("idle"))
 		K->PlayCycle("idle");
 	
 	o_fastmode						= FALSE;		// start initially with fast-mode enabled

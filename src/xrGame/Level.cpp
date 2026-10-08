@@ -202,12 +202,14 @@ CLevel::CLevel():
 
 extern CAI_Space *g_ai_space;
 
+void ClearAnomalyScriptWallmarks();
 CLevel::~CLevel()
 {
 #ifdef DEBUG_DRAW
 	ClearScriptDebug();
 #endif
 	PROF_EVENT("CLevel::~CLevel");
+    ClearAnomalyScriptWallmarks();
 
 	DestroyImGuiInGame();
 	xr_delete					(g_player_hud);

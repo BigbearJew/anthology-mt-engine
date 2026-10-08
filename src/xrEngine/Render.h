@@ -265,7 +265,7 @@ public:
 	virtual void					add_StaticWallmark		(const wm_shader& S, const Fvector& P, float s, CDB::TRI* T, Fvector* V) {};
 
 	//	Prefer this function when possible
-	virtual void					add_StaticWallmark		(IWallMarkArray *pArray, const Fvector& P, float s, CDB::TRI* T, Fvector* V, bool UseCameraDirection = false) {};
+	virtual void					add_StaticWallmark		(IWallMarkArray *pArray, const Fvector& P, float s, CDB::TRI* T, Fvector* V, bool UseCameraDirection = false, float scriptTTL = -1.f, float scriptRotation = 0.f) {};
 	virtual void					clear_static_wallmarks	() {};
 
 	//	Prefer this function when possible

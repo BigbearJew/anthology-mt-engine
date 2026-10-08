@@ -21,6 +21,7 @@ public:
 		Fsphere				bounds;
 		xr_vector<FVF::LIT>	verts;
 		float				ttl;
+        float script_ttl;
 	};
 
 	using StaticWMVec = xr_vector<static_wallmark*>;
@@ -50,7 +51,7 @@ private:
 private:
 	void				BuildMatrix				(Fmatrix &dest, float invsz, const Fvector& from);
 	void				RecurseTri				(u32 T,	Fmatrix &mView, static_wallmark	&W);
-	void				AddWallmark_internal	(CDB::TRI* pTri, const Fvector* pVerts, const Fvector &contact_point, ref_shader hTexture, float sz, bool UseCameraDirection);
+	void				AddWallmark_internal	(CDB::TRI* pTri, const Fvector* pVerts, const Fvector &contact_point, ref_shader hTexture, float sz, bool UseCameraDirection, float scriptTTL, float scriptRotation);
 
 	static_wallmark*	static_wm_allocate		();
 	void				static_wm_render		(static_wallmark*	W, FVF::LIT* &V);
@@ -61,7 +62,7 @@ public:
 						CWallmarksEngine		();
 						~CWallmarksEngine		();
 	// edit wallmarks
-	void				AddStaticWallmark		(CDB::TRI* pTri, const Fvector* pVerts, const Fvector &contact_point, ref_shader hTexture, float sz, bool UseCameraDirection = false);
+	void				AddStaticWallmark		(CDB::TRI* pTri, const Fvector* pVerts, const Fvector &contact_point, ref_shader hTexture, float sz, bool UseCameraDirection = false, float scriptTTL = -1.f, float scriptRotation = 0.f);
 	void				AddSkeletonWallmark		(intrusive_ptr<CSkeletonWallmark> wm);
 	void				AddSkeletonWallmark		(const Fmatrix* xf, CKinematics* obj, ref_shader& sh, const Fvector& start, const Fvector& dir, float size);
 

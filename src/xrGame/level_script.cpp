@@ -60,6 +60,78 @@ static player_hud* get_anomaly_player_hud() { return g_player_hud; }
 
 using namespace luabind;
 
+// Lua wallmark palettes own their names and are released with the level.
+class ScriptWallmarksManager
+{
+    xr_map<shared_str, FactoryPtr<IWallMarkArray>*> palettes;
+public:
+    void clear()
+    {
+        for (auto& item : palettes) xr_delete(item.second);
+        palettes.clear();
+    }
+    IWallMarkArray* palette(LPCSTR section)
+    {
+        if (!section || !*section) return nullptr;
+        const shared_str key(section);
+        const auto found = palettes.find(key);
+        if (found != palettes.end()) return found->second ? &**found->second : nullptr;
+        if (palettes.size() >= 64) return nullptr;
+        if (!pSettings->section_exist(section) || !pSettings->line_exist(section, "wallmarks"))
+        {
+            Msg("! [IX-Ray wallmarks] missing palette: %s", section);
+            palettes[key] = nullptr;
+            return nullptr;
+        }
+        auto* marks = new FactoryPtr<IWallMarkArray>();
+        LPCSTR textures = pSettings->r_string(section, "wallmarks");
+        const int count = textures ? _GetItemCount(textures) : 0;
+        if (count > 64) { xr_delete(marks); return nullptr; }
+        for (int i = 0; i < count; ++i)
+        {
+            xr_string texture;
+            _GetItem(textures, i, texture);
+            if (!texture.empty()) (*marks)->AppendMark(texture.c_str());
+        }
+        palettes[key] = marks;
+        return &**marks;
+    }
+    void place(Fvector direction, Fvector position, float distance, float size,
+        LPCSTR section, CScriptGameObject* ignore, float ttl)
+    {
+        place_rotation(direction, position, distance, size, section, ignore, ttl, ::Random.randF(-20.f, 20.f));
+    }
+    void place_random(Fvector direction, Fvector position, float distance, float size,
+        LPCSTR section, CScriptGameObject* ignore, float ttl, bool randomRotation)
+    {
+        place_rotation(direction, position, distance, size, section, ignore, ttl,
+            randomRotation ? ::Random.randF(-20.f, 20.f) : 0.f);
+    }
+    void place_rotation(Fvector direction, Fvector position, float distance, float size,
+        LPCSTR section, CScriptGameObject* ignore, float ttl, float rotation)
+    {
+        if (!g_pGameLevel || !_valid(direction) || !_valid(position) || !_valid(distance)
+            || !_valid(size) || !_valid(ttl) || !_valid(rotation) || distance <= 0.f || size <= EPS_L || ttl <= 0.f)
+            return;
+        if (direction.square_magnitude() < EPS_S) return;
+        direction.normalize();
+        collide::rq_result hit;
+        if (!Level().ObjectSpace.RayPick(position, direction, distance, collide::rqtBoth,
+            hit, ignore ? &ignore->object() : nullptr) || hit.O) return;
+        auto* triangle = Level().ObjectSpace.GetStaticTris() + hit.element;
+        if (GMLib.GetMaterialByIdx(triangle->material)->Flags.is(SGameMtl::flSuppressWallmarks)) return;
+        auto* marks = palette(section);
+        if (!marks || marks->empty()) return;
+        Fvector point;
+        point.mad(position, direction, hit.range);
+        Render->add_StaticWallmark(marks, point, size, triangle,
+            Level().ObjectSpace.GetStaticVerts(), false, ttl, rotation);
+    }
+};
+static ScriptWallmarksManager script_wallmarks;
+void ClearAnomalyScriptWallmarks() { script_wallmarks.clear(); }
+static ScriptWallmarksManager* get_script_wallmarks() { return &script_wallmarks; }
+
 static void iterate_nearby(const Fvector& position, float radius, const luabind::functor<bool>& callback, bool sorted)
 {
     if (!g_pGameLevel || !_valid(position) || !_valid(radius) || radius <= 0.f) return;
@@ -524,6 +596,14 @@ bool patrol_path_exists(LPCSTR patrol_path)
 LPCSTR get_name()
 {
 	return		(*Level().name());
+}
+
+static void prefetch_model(LPCSTR name)
+{
+    if (!Render || !name || !*name) return;
+    // Returning the temporary instance to the native pool retains the loaded model.
+    IRenderVisual* visual = Render->model_Create(name);
+    Render->model_Delete(visual, FALSE);
 }
 
 void prefetch_sound	(LPCSTR name)
@@ -1581,6 +1661,11 @@ LPCSTR GetActorMaterialPairName()
 #pragma optimize("s",on)
 void CLevel::script_register(lua_State *L)
 {
+    module(L)[class_<ScriptWallmarksManager>("ScriptWallmarksManager")
+        .def("place", &ScriptWallmarksManager::place)
+        .def("place", &ScriptWallmarksManager::place_random)
+        .def("place", &ScriptWallmarksManager::place_rotation),
+        def("wallmarks_manager", &get_script_wallmarks)];
 	RegisterAnomalyScriptCamera(L);
 	RegisterAnomalyScriptWeather(L);
 	RegisterAnomalyScriptHud(L);
@@ -1871,6 +1956,7 @@ void CLevel::script_register(lua_State *L)
 
 	module(L,"game")
 	[
+        def("prefetch_model", &prefetch_model),
 		class_< xrTime >("CTime")
 			.enum_("date_format")
 			[

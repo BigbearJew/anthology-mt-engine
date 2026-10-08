@@ -163,6 +163,10 @@ public:
 	typedef					xr_map<EBoostParams, SBooster> BOOSTER_MAP;
 public:
 	PLAYER_ADDICTION_BASE(Satiety);
+    void SetSatiety(float value) { ChangeSatiety(value - GetSatiety()); }
+    void SetRadiation(float value) { m_fRadiation = value; }
+    void SetPsyHealth(float value) { m_fPsyHealth = value; }
+    void SetEntityMorale(float value) { m_fEntityMorale = value; }
 	PLAYER_ADDICTION_BASE(Alcohol);
 	PLAYER_ADDICTION_BASE(Thirst);
 	PLAYER_ADDICTION_BASE(Sleepiness);
