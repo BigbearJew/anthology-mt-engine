@@ -62,7 +62,7 @@ jobs:
         if-no-files-found: "error"
         
         # Duration after which artifact will expire in days. 0 means using default retention. Minimum 1 day. Maximum 90 days unless changed from the repository settings page.
-        retention-days: 1
+        retention-days: 7
         
   build:
     name: build-job
@@ -125,6 +125,16 @@ jobs:
     #     New-Item -Path "./_build/_game/bin_dbg/${{matrix.buildconf}}.exe"
     #     New-Item -Path "./_build/_game/bin_dbg/${{matrix.buildconf}}.pdb"
 
+    - name: Get upscaler SDKs (FSR 3.1.2 + DLSS 310.4.0)
+      shell: pwsh
+      run: |
+        $root = Join-Path $env:GITHUB_WORKSPACE "upscaler_sdk"
+        New-Item -ItemType Directory -Force -Path $root | Out-Null
+        nuget install IXRay.FSR3-DX11 -Version 3.1.2 -OutputDirectory $root -Source https://api.nuget.org/v3/index.json -NonInteractive
+        nuget install IXRay.DLSS -Version 310.4.0 -OutputDirectory $root -Source https://api.nuget.org/v3/index.json -NonInteractive
+        Get-ChildItem $root -Recurse -Depth 3 | Select-Object -ExpandProperty FullName
+        "ANTHOLOGY_UPSCALER_SDK_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
     - name: Build ${{matrix.buildconf}}
       working-directory: ${{env.GITHUB_WORKSPACE}}
       # Add additional options to the MSBuild command line here (like platform or verbosity level).
@@ -147,7 +157,7 @@ jobs:
         if-no-files-found: "error"
         
         # Duration after which artifact will expire in days. 0 means using default retention. Minimum 1 day. Maximum 90 days unless changed from the repository settings page.
-        retention-days: 1
+        retention-days: 7
 
     - name: Zip PDB
       run: |
@@ -170,10 +180,12 @@ jobs:
         if-no-files-found: "error"
         
         # Duration after which artifact will expire in days. 0 means using default retention. Minimum 1 day. Maximum 90 days unless changed from the repository settings page.
-        retention-days: 1
+        retention-days: 7
 
   build_mt:
     name: build-mt-job
+    # Disabled: this job builds demonized's stock MT branch, not our code.
+    if: false
     runs-on: windows-latest
 
     strategy:
@@ -233,6 +245,16 @@ jobs:
     #     New-Item -Path "./_build/_game/bin_dbg/${{matrix.buildconf}}_mt.exe"
     #     New-Item -Path "./_build/_game/bin_dbg/${{matrix.buildconf}}_mt.pdb"
 
+    - name: Get upscaler SDKs (FSR 3.1.2 + DLSS 310.4.0)
+      shell: pwsh
+      run: |
+        $root = Join-Path $env:GITHUB_WORKSPACE "upscaler_sdk"
+        New-Item -ItemType Directory -Force -Path $root | Out-Null
+        nuget install IXRay.FSR3-DX11 -Version 3.1.2 -OutputDirectory $root -Source https://api.nuget.org/v3/index.json -NonInteractive
+        nuget install IXRay.DLSS -Version 310.4.0 -OutputDirectory $root -Source https://api.nuget.org/v3/index.json -NonInteractive
+        Get-ChildItem $root -Recurse -Depth 3 | Select-Object -ExpandProperty FullName
+        "ANTHOLOGY_UPSCALER_SDK_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
     - name: Build ${{matrix.buildconf}}
       working-directory: ${{env.GITHUB_WORKSPACE}}
       # Add additional options to the MSBuild command line here (like platform or verbosity level).
@@ -255,7 +277,7 @@ jobs:
         if-no-files-found: "error"
 
         # Duration after which artifact will expire in days. 0 means using default retention. Minimum 1 day. Maximum 90 days unless changed from the repository settings page.
-        retention-days: 1
+        retention-days: 7
 
     - name: Zip PDB
       run: |
@@ -278,11 +300,12 @@ jobs:
         if-no-files-found: "error"
 
         # Duration after which artifact will expire in days. 0 means using default retention. Minimum 1 day. Maximum 90 days unless changed from the repository settings page.
-        retention-days: 1
+        retention-days: 7
 
   release:
-    needs: [pack_gamedata, build, build_mt]
+    needs: [pack_gamedata, build]
     name: Release
+    if: false
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
