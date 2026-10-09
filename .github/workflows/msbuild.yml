@@ -8,9 +8,7 @@ name: MSBuild
 on:
   workflow_dispatch:
   push:
-    branches: [ "all-in-one-vs2022-wpo" ]
-  pull_request:
-    branches: [ "all-in-one-vs2022-wpo" ]
+    branches: [ "anthology-v170-squared-away" ]
 
 permissions: write-all
 
@@ -72,7 +70,7 @@ jobs:
 
     strategy:
       matrix:
-        buildconf: ["DX11", "DX10", "DX9", "DX8", "DX11-AVX", "DX10-AVX", "DX9-AVX", "DX8-AVX"]
+        buildconf: ["DX11", "DX11-AVX"]
 
     steps:
     - name: Configure Pagefile
@@ -180,7 +178,7 @@ jobs:
 
     strategy:
       matrix:
-        buildconf: ["DX11", "DX10", "DX9", "DX8", "DX11-AVX", "DX10-AVX", "DX9-AVX", "DX8-AVX"]
+        buildconf: ["DX11", "DX11-AVX"]
 
     steps:
     - name: Configure Pagefile
