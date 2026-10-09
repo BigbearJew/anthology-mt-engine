@@ -147,6 +147,10 @@ public:
 	//работа с дочерними и родительскими окнами
 	virtual void AttachChild(CUIWindow* pChild);
 	virtual void DetachChild(CUIWindow* pChild);
+	// Move an existing engine-owned control without queuing it for deletion.
+	bool Reparent(CUIWindow* parent);
+	void SetClipChildren(bool value) { m_clip_children = value; }
+	bool GetClipChildren() const { return m_clip_children; }
 	virtual bool IsChild(CUIWindow* pChild) const;
 	virtual void DetachAll();
 	int GetChildNum()
@@ -274,6 +278,20 @@ public:
 	CUIWindow* FindChild(const shared_str name);
 
 	IC bool CursorOverWindow() const { return m_bCursorOverWindow; }
+	// Squared Away: a scrolling inventory can contain controls clipped by an
+	// ancestor viewport. Render and input must agree on every viewport.
+	IC bool HitClipPass(const Fvector2& abs_pos) const
+	{
+		for (CUIWindow* p = GetParent(); p; p = p->GetParent())
+		{
+			if (!p->m_clip_children) continue;
+			Frect rect;
+			p->GetAbsoluteRect(rect);
+			if (!p->IsShown() || !p->IsEnabled() || !rect.in(abs_pos.x, abs_pos.y))
+				return false;
+		}
+		return true;
+	}
 	IC u32 FocusReceiveTime() const { return m_dwFocusReceiveTime; }
 
 	IC bool GetCustomDraw() const { return m_bCustomDraw; }
@@ -324,6 +342,7 @@ protected:
 
 	// Если курсор над окном
 	bool m_bCursorOverWindow;
+	bool m_clip_children = false;
 	bool m_bCustomDraw;
 
 #ifdef DEBUG

@@ -182,6 +182,12 @@ void CUIWindow::Draw()
 {
 	PROF_EVENT("CUIWindow::Draw");
 	xrCriticalSectionGuard guard(csUi);
+	if (m_clip_children)
+	{
+		Frect rect;
+		GetAbsoluteRect(rect);
+		UI().PushScissor(rect);
+	}
 	for (CUIWindow* W : m_ChildWndList)
 	{
 		if (!W)		continue;
@@ -189,6 +195,7 @@ void CUIWindow::Draw()
 		if (W->GetCustomDraw())	continue;
 		W->Draw();
 	}
+	if (m_clip_children) UI().PopScissor();
 #ifdef DEBUG
 	if (g_show_wnd_rect2) {
 		Frect r;
@@ -217,7 +224,7 @@ void CUIWindow::Update()
 		Fvector2 temp = GetUICursor().GetCursorPosition();
 		Frect r;
 		GetAbsoluteRect(r);
-		cursor_on_window = !!r.in(temp);
+		cursor_on_window = !!r.in(temp) && HitClipPass(temp);
 		// RECEIVE and LOST focus
 		if (m_bCursorOverWindow != cursor_on_window)
 		{
@@ -269,6 +276,21 @@ void CUIWindow::AttachChild(CUIWindow* pChild)
 
 	xrCriticalSectionGuard guard(csUi);
 	m_ChildWndList.push_back(pChild);
+}
+
+bool CUIWindow::Reparent(CUIWindow* parent)
+{
+	if (!parent) return false;
+	for (CUIWindow* p = parent; p; p = p->GetParent())
+		if (p == this) return false;
+	if (parent == GetParent()) return true;
+
+	const bool autoDelete = IsAutoDelete();
+	SetAutoDelete(false);
+	if (GetParent()) GetParent()->DetachChild(this);
+	parent->AttachChild(this);
+	SetAutoDelete(autoDelete);
+	return true;
 }
 
 void CUIWindow::DetachChild(CUIWindow* pChild)
@@ -409,7 +431,7 @@ bool CUIWindow::OnMouseAction(float x, float y, EUIMessages mouse_action)
 	{
 		CUIWindow* w = (*it);
 		Frect wndRect = w->GetWndRect();
-		if (wndRect.in(cursor_pos))
+		if (wndRect.in(cursor_pos) && w->HitClipPass(GetUICursor().GetCursorPosition()))
 		{
 			if (w->IsEnabled())
 			{
