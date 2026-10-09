@@ -1,0 +1,70 @@
+-- Commands are saved by MCM in user.ltx; no separate settings cache or update loop.
+local commands = {
+    {"r_aa", "list", true},
+    {"r2_ssao_mode", "list", true},
+    {"r2_sun_shafts", "list", true},
+    {"r2_sun_quality", "list", true},
+    {"r2_smap_size", "list", true},
+    {"r2_cloud_shadows", "check", true},
+    {"r2_sun_details", "check", true},
+    {"r2_lights_details", "check", true},
+    {"r4_hud_shadows", "check", true},
+    {"r4_hashed_alpha_test", "check", true},
+    {"r4_sslr_water", "check", true},
+    {"r4_sslr_reflections", "check", true},
+    {"r4_enable_vslr", "check", true},
+    {"r4_vslr_distance", "track", false, 0.01, 2},
+    {"r4_cas_sharpening", "track", false, 0.01, 2},
+    {"r4_puddles", "check", true},
+    {"r4_enable_tessellation", "check", true},
+    {"r2_steep_parallax", "check", true},
+    {"r2_detail_bump", "check", true},
+    {"r__detail_radius", "track", true, 1, 0},
+    {"r__detail_density", "track", true, 0.01, 2},
+    {"rs_fps_limit", "input", false, 1, 0},
+    {"g_ironsights_zoom_factor", "track", false, 0.01, 2},
+}
+
+local function option(console, spec)
+    local cmd, kind = spec[1], spec[2]
+    local current = console:get_string(cmd)
+    if not current or current == "" then return nil end
+    local item = {
+        id = cmd, cmd = cmd, type = kind, restart = spec[3],
+        hint = "ixray_" .. cmd,
+    }
+    if kind == "check" then
+        if current ~= "on" and current ~= "off" then return nil end
+        item.val = 1
+    elseif kind == "list" then
+        local tokens = console:get_token_list(cmd)
+        if type(tokens) ~= "table" or #tokens == 0 then return nil end
+        item.val, item.content = 0, {}
+        item.no_str = true -- Token names already belong to the engine string table.
+        for _, token in ipairs(tokens) do
+            item.content[#item.content + 1] = {token, token}
+        end
+    else
+        local bounds = console:get_variable_bounds(cmd)
+        if type(bounds) ~= "table" or not bounds.min or not bounds.max
+            or not tonumber(current) then return nil end
+        item.val, item.min, item.max = 2, bounds.min, bounds.max
+        item.step, item.prec = spec[4], spec[5]
+    end
+    return item
+end
+
+function on_mcm_load()
+    if not has_ixray_dxml_callback or type(get_console) ~= "function" then return nil end
+    local console = get_console()
+    if not console then return nil end
+    local group = {
+        {id = "description", type = "desc", text = "ui_mcm_ixray_description"},
+    }
+    for _, spec in ipairs(commands) do
+        local item = option(console, spec)
+        if item then group[#group + 1] = item end
+    end
+    if #group == 1 then return nil end
+    return {id = "anthology_ixray", text = "ui_mcm_ixray_title", sh = true, gr = group}
+end

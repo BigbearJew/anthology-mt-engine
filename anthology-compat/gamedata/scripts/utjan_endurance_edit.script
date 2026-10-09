@@ -1,0 +1,25 @@
+power_bias_by_diff = {
+	[0] = 0.2,
+	[1] = 0.3,
+	[2] = 0.4
+}
+
+local ixray_power_loss_available
+
+function haru_skills.update_endurance()
+    if ixray_power_loss_available == nil then
+        local value = get_console():get_string("power_loss_bias")
+        ixray_power_loss_available = value ~= nil and value ~= ""
+        if not ixray_power_loss_available then
+            printf("[IX-Ray compatibility] Haruka endurance power-loss adjustment unavailable; movement bonus stays active")
+        end
+    end
+	local diff = level.get_game_difficulty() -- hard = 2, medium = 1, easy = 0
+	if ixray_power_loss_available and (diff == 0 or diff == 1 or diff == 2) then
+		local pwb = haru_skills.skills_stats["endurance"].power_loss * power_bias_by_diff[diff]
+		--printf("Post calc pwb: " .. pwb)
+		exec_console_cmd("power_loss_bias " .. tostring(pwb))
+	end
+    local speed_modifier = haru_skills.skills_stats["endurance"].speed_modifier
+    speed.add_speed("haruka_endurance_modifier_walk", speed_modifier, false, true)
+end

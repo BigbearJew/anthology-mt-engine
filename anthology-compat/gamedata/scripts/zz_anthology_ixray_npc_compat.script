@@ -1,0 +1,12 @@
+-- The knife action switches state only outside its 1.5--3.5 m dead band.
+-- Seed its cached state to match the danger state selected by initialize().
+local knife = rx_knife
+local action = knife and knife.action_knife_attack
+if action and type(action.initialize) == "function" then
+    local original_initialize = action.initialize
+    action.initialize = function(self, ...)
+        self.mental = anim.danger
+        return original_initialize(self, ...)
+    end
+    printf("[IX-Ray compatibility] NPC knife action initial mental state fixed")
+end

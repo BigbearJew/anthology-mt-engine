@@ -1,0 +1,15 @@
+-- axr_main loads modules before dispatching their on_game_start functions.
+-- Initialize the stat inside the base constructor before it loads the sounds.
+local notifications = haru_suit_notifications_mcm
+if type(notifications) == "table" and notifications.GenericNotification and notifications.StatNotification then
+    local original_init = notifications.GenericNotification.__init
+    notifications.GenericNotification.__init = function(self, stat)
+        if stat ~= nil then self.stat = stat end
+        original_init(self)
+    end
+    notifications.StatNotification.__init = function(self, stat, getter)
+        super(stat)
+        self.last_played = {false, false, false}
+        self.getter = getter
+    end
+end

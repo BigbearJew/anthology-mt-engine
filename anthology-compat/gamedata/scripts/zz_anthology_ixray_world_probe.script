@@ -1,0 +1,268 @@
+-- Opt-in integration diagnostic; inactive for normal MO2 launches.
+local entered, current_level, saved, milestone
+local weapon_test, weapon_test_time, weapon_test_id, weapon_test_ammo
+local equip_attempted, weapon_diagnostic
+local tilt_test_settings, tilt_manual_original
+local hud_vectors = {}
+local animation_callbacks = 0
+local function log_pose(stage, item)
+    for _, index in ipairs({0, 4, 12}) do
+        for component = 0, 1 do
+            printf("[IX-Ray probe] Pose %s vector %s/%s = %s", stage, component, index, hud_vectors[component * 21 + index] or "native")
+        end
+    end
+    local ini = system_ini()
+    local section = ini:r_string(item:section(), "hud")
+    for _, key in ipairs({"hands_position_16x9", "hands_orientation_16x9", "lowered_hud_offset_pos_16x9", "lowered_hud_offset_rot_16x9", "anm_idle_lowered"}) do
+        printf("[IX-Ray probe] HUD %s %s = %s", section, key, ini:line_exist(section, key) and ini:r_string(section, key) or "absent")
+    end
+end
+
+local function enable_manual_tilt_test()
+    -- Change only this diagnostic session, never the stored MCM options.
+    for index = 1, 32 do
+        local name, value = debug.getupvalue(weapon_cover_tilt.on_key_press, index)
+        if not name then break end
+        if name == "settings" and type(value) == "table" then
+            tilt_test_settings, tilt_manual_original = value, value.enable_manual_tilt
+            value.enable_manual_tilt = true
+            return
+        end
+    end
+    error("IX-Ray probe: Cover Tilt settings unavailable")
+end
+
+local function check_weapon_lowering(now)
+    local item = db.actor:active_item()
+    local weapon = item and item:cast_Weapon()
+    if weapon then assert(type(weapon:IsPending()) == "boolean", "IX-Ray probe: IsPending must return a Lua boolean") end
+    if not weapon_diagnostic or now - weapon_diagnostic >= 5000 then
+        weapon_diagnostic = now
+        printf("[IX-Ray probe] Weapon state: item=%s slot=%s state=%s lowerable=%s pending=%s test=%s",
+            item and item:section() or "none", tostring(db.actor:active_slot()),
+            item and tostring(item:get_state()) or "none", weapon and tostring(weapon:CanBeLowered()) or "none",
+            weapon and tostring(weapon:IsPending()) or "none", tostring(weapon_test))
+    end
+    if (not weapon or not weapon:CanBeLowered()) and not equip_attempted then
+        equip_attempted = true
+        for slot = 0, 4 do
+            local candidate = db.actor:item_in_slot(slot)
+            local gun = candidate and candidate:cast_Weapon()
+            printf("[IX-Ray probe] Slot %s: %s lowerable=%s", slot, candidate and candidate:section() or "empty",
+                gun and tostring(gun:CanBeLowered()) or "none")
+            if gun and gun:CanBeLowered() then
+                db.actor:activate_slot(slot)
+                printf("[IX-Ray probe] Drawing test weapon: %s slot %s", candidate:section(), slot)
+                return
+            end
+        end
+        printf("[IX-Ray probe] No slotted lowerable weapon; weapon test has NOT passed")
+    end
+    if not weapon or not weapon:CanBeLowered() then return end
+    if weapon_test ~= "shot_release" and (item:get_state() ~= 0 or weapon:IsPending()) then return end
+    if not weapon_test then
+        local interval = weapon:RPM()
+        assert(interval > 0 and math.abs(weapon:RealRPM() * interval - 60) < 0.001, "IX-Ray probe: RPM interval mismatch")
+        weapon:SetPending(false)
+        weapon:SetRealRPM(weapon:RealRPM())
+        assert(not weapon:IsPending() and math.abs(weapon:RPM() - interval) < 0.00001, "IX-Ray probe: native weapon setters failed")
+        game.actor_lower_weapon(true)
+        assert(game.actor_weapon_lowered(), "IX-Ray probe: weapon did not lower")
+        weapon_test, weapon_test_time, weapon_test_id = "lowered", now, item:id()
+        printf("[IX-Ray probe] Native weapon lowering entered: %s", item:section())
+    elseif weapon_test == "lowered" and now - weapon_test_time >= 2000 then
+        assert(item:id() == weapon_test_id and game.actor_weapon_lowered(), "IX-Ray probe: lowered weapon state was lost")
+        log_pose("lowered", item)
+        get_console():execute_deferred("screenshot ixray_weapon_lowered")
+        weapon_test = "lowered_captured"
+    elseif weapon_test == "lowered_captured" and now - weapon_test_time >= 3000 then
+        game.actor_lower_weapon(false)
+        assert(not game.actor_weapon_lowered(), "IX-Ray probe: weapon did not raise")
+        weapon_test, weapon_test_time = "raised", now
+        printf("[IX-Ray probe] Native weapon lowering/raising passed")
+    elseif weapon_test == "raised" and now - weapon_test_time >= 3000 then
+        get_console():execute_deferred("screenshot ixray_weapon_raised")
+        weapon_test, weapon_test_time = "tilt_wait", now
+    elseif weapon_test == "tilt_wait" and now - weapon_test_time >= 1000 then
+        assert(not weapon_cover_tilt.is_tilt_key_pressed(), "IX-Ray probe: manual cover tilt was already active")
+        enable_manual_tilt_test()
+        weapon_cover_tilt.on_key_press(ui_mcm.get("weapon_cover_tilt/manual_tilt_key_bind"))
+        weapon_test, weapon_test_time = "tilt", now
+    elseif weapon_test == "tilt" and now - weapon_test_time >= 3000 then
+        assert(weapon_cover_tilt.is_tilt_enabled(), "IX-Ray probe: Weapon Cover Tilt did not activate")
+        log_pose("tilted", item)
+        get_console():execute_deferred("screenshot ixray_weapon_cover_tilt")
+        weapon_test = "tilt_captured"
+    elseif weapon_test == "tilt_captured" and now - weapon_test_time >= 4000 then
+        weapon_cover_tilt.on_key_press(ui_mcm.get("weapon_cover_tilt/manual_tilt_key_bind"))
+        assert(not weapon_cover_tilt.is_tilt_key_pressed(), "IX-Ray probe: manual cover tilt did not reset")
+        tilt_test_settings.enable_manual_tilt = tilt_manual_original
+        printf("[IX-Ray probe] Weapon Cover Tilt activation and reset passed")
+        game.actor_lower_weapon(true)
+        assert(game.actor_weapon_lowered(), "IX-Ray probe: trigger test could not lower weapon")
+        weapon_test_ammo = weapon:GetAmmoElapsed()
+        weapon_test, weapon_test_time = "trigger_wait", now
+    elseif weapon_test == "trigger_wait" and now - weapon_test_time >= 2000 then
+        assert(game.actor_weapon_lowered(), "IX-Ray probe: trigger test lost lowered state")
+        level.press_action(DIK_keys.MOUSE_1)
+        level.release_action(DIK_keys.MOUSE_1)
+        weapon_test, weapon_test_time = "trigger_check", now
+    elseif weapon_test == "trigger_check" and now - weapon_test_time >= 1000 then
+        assert(not game.actor_weapon_lowered(), "IX-Ray probe: trigger did not raise weapon")
+        assert(weapon:GetAmmoElapsed() == weapon_test_ammo, "IX-Ray probe: raising trigger fired a shot")
+        printf("[IX-Ray probe] Trigger raised weapon without firing; RPM input callback survived")
+        game.actor_lower_weapon(true)
+        assert(game.actor_weapon_lowered(), "IX-Ray probe: aim test could not lower weapon")
+        weapon_test, weapon_test_time = "aim_wait", now
+    elseif weapon_test == "aim_wait" and now - weapon_test_time >= 2000 then
+        level.press_action(DIK_keys.MOUSE_2)
+        level.release_action(DIK_keys.MOUSE_2)
+        assert(not game.actor_weapon_lowered(), "IX-Ray probe: aim did not raise weapon")
+        printf("[IX-Ray probe] Aim raised lowered weapon")
+        weapon_test, weapon_test_time = "shot_wait", now
+    elseif weapon_test == "shot_wait" and now - weapon_test_time >= 2000 then
+        weapon_test_ammo = weapon:GetAmmoElapsed()
+        assert(weapon_test_ammo > 0, "IX-Ray probe: no ammunition for fire test")
+        level.press_action(DIK_keys.MOUSE_1)
+        weapon_test, weapon_test_time = "shot_release", now
+    elseif weapon_test == "shot_release" and now - weapon_test_time >= 150 then
+        level.release_action(DIK_keys.MOUSE_1)
+        weapon_test, weapon_test_time = "shot_check", now
+    elseif weapon_test == "shot_check" and now - weapon_test_time >= 2000 then
+        assert(weapon:GetAmmoElapsed() < weapon_test_ammo, "IX-Ray probe: weapon did not fire")
+        assert(animation_callbacks > 0, "IX-Ray probe: Anomaly HUD animation callback never fired")
+        printf("[IX-Ray probe] Live fire and HUD animation callback passed: ammo %s -> %s; callbacks %s",
+            weapon_test_ammo, weapon:GetAmmoElapsed(), animation_callbacks)
+        get_console():execute_deferred("save ixray_compat_weapon_test")
+        weapon_test = "done"
+    end
+end
+
+local function check_condition_properties()
+    local marker_xml = CScriptXmlInit()
+    marker_xml:ParseFile('ui_hud_marker.xml')
+    assert(marker_xml:NodeExist('marker', 0), 'IX-Ray probe: HUD marker XML did not load')
+    assert(marker_xml:NodeExist('marker:label', 0), 'IX-Ray probe: HUD marker label missing')
+    assert(marker_xml:NodeExist('marker:distance', 0), 'IX-Ray probe: HUD marker distance missing')
+    printf('[IX-Ray probe] Legacy HUD marker XML loaded')
+    local actor = db.actor
+    for _, property in ipairs({"health", "power", "psy_health", "satiety", "radiation", "morale"}) do
+        local original = actor[property]
+        local expected = original * 0.9
+        actor[property] = expected
+        local actual = actor[property]
+        actor[property] = original
+        assert(math.abs(actual - expected) < 0.0001, "IX-Ray probe: absolute " .. property .. " assignment failed")
+        assert(type(actor["change_" .. property]) == "function", "IX-Ray probe: missing change_" .. property)
+        actor["change_" .. property](actor, 0)
+    end
+    printf("[IX-Ray probe] Native condition assignments and change_* bindings verified")
+end
+
+local function on_update()
+    if not db.actor or not db.actor:alive() then return end
+    local name = level.name()
+    if name == "fake_start" or not app_ready() or device().precache_frame > 0 then
+        entered, current_level = nil, nil
+        return
+    end
+    local now = time_global()
+    if name ~= current_level then
+        entered, current_level = now, name
+        get_console():hide()
+        printf("[IX-Ray probe] Actor update on playable level: %s", name)
+        check_condition_properties()
+    end
+    if now - entered >= 20000 and weapon_test ~= "done" then check_weapon_lowering(now) end
+    if not saved and now - entered >= 10000 then
+        saved = true
+        if command_line():find("-ixray_world_probe_reload", 1, true) then
+            printf("[IX-Ray probe] Native save reload survived 10 seconds: %s", name)
+        else
+            printf("[IX-Ray probe] Playable level survived 10 seconds: %s; saving native test slot", name)
+            get_console():execute_deferred("save ixray_compat_newgame_test")
+        end
+        get_console():execute_deferred("screenshot ixray_world_probe")
+    end
+    if saved and now - entered >= 60000 and milestone ~= 60 then
+        milestone = 60
+        printf("[IX-Ray probe] Playable world survived 60 seconds: %s", name)
+        printf("[IX-Ray probe] Weapon test final state: %s", tostring(weapon_test))
+        get_console():execute_deferred("screenshot ixray_world_probe_60s")
+    end
+    if milestone == 60 and now - entered >= 62000 then
+        UnregisterScriptCallback("actor_on_update", on_update)
+        printf("[IX-Ray probe] Finished; requesting normal exit")
+        get_console():execute_deferred("quit")
+    end
+end
+
+local function install_preflight()
+    if not command_line():find("-ixray_preflight", 1, true) then return end
+    local original = axr_main.make_callback
+    local intercepts
+    for i = 1, 32 do
+        local name, value = debug.getupvalue(original, i)
+        if not name then break end
+        if name == "intercepts" and type(value) == "table" then intercepts = value; break end
+    end
+    assert(intercepts, "IX-Ray preflight: callback registry unavailable")
+    local traced = {}
+    local audited = {on_game_load = true, actor_on_first_update = true, actor_on_update = true}
+    axr_main.make_callback = function(name, ...)
+        if not audited[name] then
+            return original(name, ...)
+        end
+        local args, argc = {...}, select("#", ...)
+        local entries = {}
+        for callback in pairs(intercepts[name] or {}) do entries[#entries + 1] = callback end
+        local failures = 0
+        for _, callback in ipairs(entries) do
+            if intercepts[name][callback] then
+                if not traced[name] then
+                    local fn = type(callback) == "function" and callback or callback[name]
+                    local info = type(fn) == "function" and debug.getinfo(fn, "Sl") or {}
+                    printf("[IX-Ray preflight] calling %s %s:%s", name, tostring(info.short_src), tostring(info.linedefined))
+                end
+                local ok, message = xpcall(function()
+                    if type(callback) == "function" then callback(unpack(args, 1, argc))
+                    elseif callback[name] then callback[name](callback, unpack(args, 1, argc)) end
+                end, debug.traceback)
+                if not ok then
+                    failures = failures + 1
+                    printf("[IX-Ray preflight] %s FAILED: %s", name, tostring(message))
+                end
+            end
+        end
+        traced[name] = true
+        -- Diagnostic only: never continue or save after a partly failed update.
+        assert(failures == 0, "IX-Ray preflight: " .. tostring(failures) .. " callback failures; see log")
+    end
+end
+
+function on_game_start()
+    if command_line():find('-ixray_ui_probe', 1, true) then return end
+    if type(command_line) ~= "function" or not command_line():find("-ixray_world_probe", 1, true) then
+        return
+    end
+    local original_vector = hud_adjust.set_vector
+    hud_adjust.set_vector = function(component, index, x, y, z)
+        if component >= 0 and component < 2 and index >= 0 and index < 21 then
+            hud_vectors[component * 21 + index] = string.format("%.6f,%.6f,%.6f", x, y, z)
+        end
+        return original_vector(component, index, x, y, z)
+    end
+    RegisterScriptCallback("actor_on_hud_animation_play", function()
+        animation_callbacks = math.min(animation_callbacks + 1, 100000)
+    end)
+    install_preflight()
+    RegisterScriptCallback("on_game_load", function()
+        -- Match the regular new-game menu path when testing via -start.
+        device():pause(false)
+        get_console():execute_deferred("main_menu off")
+    end)
+    RegisterScriptCallback("actor_on_first_update", function()
+        printf("[IX-Ray probe] First actor update: %s", level.name())
+    end)
+    RegisterScriptCallback("actor_on_update", on_update)
+end

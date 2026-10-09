@@ -1,0 +1,16 @@
+-- The addon passes article metadata to the native row-height constructor.
+-- Checked Lua bindings require the actual height; metadata stays in Lua.
+local encyclopedia = ui_pda_encyclopedia_tab
+if type(encyclopedia) == "table" and encyclopedia.pda_encyclopedia_entry then
+    encyclopedia.pda_encyclopedia_entry.__init = function(self, sec, indx, clr)
+        super(22)
+        self.sec, self.indx, self.clr = sec, indx, clr
+        self.sect = self:GetTextItem()
+        self.sect:SetWndRect(Frect():set(5, 0, 300, 22))
+        self:SetTextColor(clr)
+        self.sect:SetFont(GetFontLetterica18Russian())
+        self.sect:SetWndSize(vector2():set(400, 22))
+        self.sect:SetEllipsis(true)
+        self.sect:SetText(game.translate_string(encyclopedia.UpdateName(sec)))
+    end
+end

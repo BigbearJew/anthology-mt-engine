@@ -1,0 +1,156 @@
+-- Opt-in only. Opens the same inventory entry point as the real key binding.
+local entered, stage, inventory_shown = nil, 0, false
+local mcm_entered, mcm_captured, finished_at
+local move_id, move_slot, move_ammo, move_started
+
+local function on_update()
+    if not db.actor or not app_ready() or device().precache_frame > 0 or level.name() == 'fake_start' then return end
+    local now = time_global()
+    if not entered then
+        entered = now
+        get_console():hide()
+        printf('[IX-Ray UI probe] Native save loaded: %s', level.name())
+        local widget = CUIStatic()
+        widget:Show('section')
+        assert(widget:IsShown(), 'String visibility condition rejected')
+        widget:Show(nil)
+        assert(not widget:IsShown(), 'Nil visibility condition rejected')
+        widget:Show(false)
+        assert(not widget:IsShown(), 'False visibility condition rejected')
+        widget:Show(0)
+        assert(widget:IsShown(), 'Lua zero must remain truthy')
+        widget:Show(false)
+        printf('[IX-Ray UI probe] Visibility truthiness passed')
+        local edit = CUIEditBox()
+        edit:SetText(125)
+        assert(edit:GetText() == '125', 'Numeric edit-box value did not round-trip')
+        edit:SetText(nil)
+        assert(edit:GetText() == '', 'Nil edit-box value did not clear the text')
+        db.actor:cast_Actor():conditions():BoosterForEach(function(typ, period, value)
+            assert(period > 0, 'Inactive booster leaked into Anomaly status HUD')
+            return false
+        end)
+        printf('[IX-Ray UI probe] Numeric edit text and active booster enumeration passed')
+    end
+    local elapsed = now - entered
+    if stage == 0 and elapsed >= 8000 then
+        stage = 1
+        printf('[IX-Ray UI probe] Opening inventory via bound action')
+        level.press_action(DIK_keys.DIK_I)
+        level.release_action(DIK_keys.DIK_I)
+    elseif stage == 1 and elapsed >= 12000 then
+        stage = 2
+        local shown = ui_inventory.GUI and ui_inventory.GUI:IsShown() or false
+        inventory_shown = shown
+        printf('[IX-Ray UI probe] Script inventory shown: %s', tostring(shown))
+        get_console():execute_deferred('screenshot ixray_ui_inventory')
+    elseif stage == 2 and elapsed >= 18000 then
+        stage = 3
+        hide_hud_inventory()
+        printf('[IX-Ray UI probe] Inventory close requested')
+    elseif stage == 3 and elapsed >= 22000 then
+        stage = 4
+        assert(not ui_inventory.GUI or not ui_inventory.GUI:IsShown(), 'IX-Ray UI probe: inventory still visible')
+        if inventory_shown then printf('[IX-Ray UI probe] Inventory open/close cycle passed') end
+        get_console():execute_deferred('screenshot ixray_ui_closed')
+    elseif stage == 4 and elapsed >= 28000 then
+        stage = 5
+        level.press_action(bind_to_dik(key_bindings.kINVENTORY))
+        level.release_action(bind_to_dik(key_bindings.kINVENTORY))
+    elseif stage == 5 and elapsed >= 33000 then
+        stage = 6
+        assert(ui_inventory.GUI and ui_inventory.GUI:IsShown(), 'Repeated inventory opening failed')
+        printf('[IX-Ray UI probe] Repeated inventory opening passed')
+        hide_hud_inventory()
+        level.press_action(DIK_keys.DIK_P)
+        level.release_action(DIK_keys.DIK_P)
+    elseif stage == 6 and elapsed >= 39000 then
+        stage = 7
+        assert(get_hud():TopInputReceiver(), 'PDA did not become an input dialog')
+        printf('[IX-Ray UI probe] PDA input dialog shown')
+        get_console():execute_deferred('screenshot ixray_ui_pda')
+    elseif stage == 7 and elapsed >= 45000 then
+        stage = 8
+        get_hud():HidePdaMenu()
+        assert(not get_hud():TopInputReceiver(), 'PDA did not close')
+        printf('[IX-Ray UI probe] PDA open/close cycle passed')
+        ui_mcm.open_to('anthology_ixray')
+    elseif stage == 9 then
+        for slot = 0, 4 do
+            local item = db.actor:item_in_slot(slot)
+            if item and IsWeapon(item) and item:cast_Weapon():GetAmmoMagSize() > 0 then
+                move_id, move_slot = item:id(), slot
+                move_ammo = item:cast_Weapon():GetAmmoElapsed()
+                db.actor:move_to_ruck(item)
+                break
+            end
+        end
+        assert(move_id, 'UI probe needs a slotted firearm for the inventory move test')
+        move_started, stage = now, 10
+    elseif stage == 10 and now - move_started >= 2000 then
+        assert(not db.actor:item_in_slot(move_slot), 'Weapon did not leave its slot')
+        local item = assert(level.object_by_id(move_id), 'Moved item disappeared')
+        assert(item:parent() and item:parent():id() == db.actor:id(), 'Moved item lost actor ownership')
+        assert(item:cast_Weapon():GetAmmoElapsed() == move_ammo, 'Move changed ammunition')
+        db.actor:move_to_slot(item, move_slot)
+        move_started, stage = now, 11
+    elseif stage == 11 and now - move_started >= 2000 then
+        local item = db.actor:item_in_slot(move_slot)
+        assert(item and item:id() == move_id, 'Weapon did not return to its original slot')
+        assert(item:cast_Weapon():GetAmmoElapsed() == move_ammo, 'Re-equipping changed ammunition')
+        printf('[IX-Ray UI probe] Slot/ruck/slot cycle passed; item and ammunition preserved')
+        stage = 12
+    elseif stage == 12 and not finished_at then
+        finished_at = now
+        get_console():execute_deferred('save ixray_compat_ui_test')
+        printf('[IX-Ray UI probe] Returned from MCM; saving native UI test slot')
+    elseif stage == 12 and now - finished_at >= 5000 then
+        stage = 13
+        UnregisterScriptCallback('actor_on_update', on_update)
+        printf('[IX-Ray UI probe] Finished; requesting normal exit')
+        get_console():execute_deferred('quit')
+    end
+end
+
+function on_game_start()
+    if not command_line():find('-ixray_ui_probe', 1, true) then return end
+    local fs = getFS()
+    for _, name in ipairs({'ui_inventory.script', 'ui_mcm.script', 'ui_main_menu.script', 'actor_status.script'}) do
+        local source = fs:update_path('$game_scripts$', name)
+        if fs:exist(source) then
+            local output = assert(io.open(fs:update_path('$app_data_root$', 'ixray_ui_probe_' .. name), 'wb'))
+            output:write(r_file_as_string(source))
+            output:close()
+        end
+    end
+    for _, name in ipairs({'ui\\ui_mcm.xml', 'ui\\ui_mcm_16.xml'}) do
+        local source = fs:update_path('$game_config$', name)
+        if fs:exist(source) then
+            local output = assert(io.open(fs:update_path('$app_data_root$', 'ixray_ui_probe_' .. name:gsub('\\', '_')), 'wb'))
+            output:write(r_file_as_string(source))
+            output:close()
+        end
+    end
+    RegisterScriptCallback('on_game_load', function()
+        device():pause(false)
+        get_console():execute_deferred('main_menu off')
+    end)
+    local original_mcm_update = ui_mcm.UI_MCM.Update
+    ui_mcm.UI_MCM.Update = function(self)
+        original_mcm_update(self)
+        if stage ~= 8 or not self:IsShown() then return end
+        local now = time_continual()
+        mcm_entered = mcm_entered or now
+        if not mcm_captured and now - mcm_entered >= 2000 then
+            mcm_captured = true
+            printf('[IX-Ray UI probe] MCM shown with native IX-Ray options')
+            get_console():execute_deferred('screenshot ixray_ui_mcm')
+        elseif mcm_captured and now - mcm_entered >= 6000 then
+            stage = 9
+            self:On_Cancel()
+            get_console():execute_deferred('main_menu off')
+            printf('[IX-Ray UI probe] MCM closed without applying changes')
+        end
+    end
+    RegisterScriptCallback('actor_on_update', on_update)
+end

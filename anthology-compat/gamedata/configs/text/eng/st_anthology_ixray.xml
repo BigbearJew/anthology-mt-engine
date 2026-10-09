@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<string_table>
+    <string id="ui_mcm_ixray_title"><text>IX-Ray: native settings</text></string>
+    <string id="ui_mcm_ixray_description"><text>Native IX-Ray DX11 controls. Current values, choices and limits come from the running renderer; changes are saved in user.ltx. Restart the game for options marked with a restart hint. These controls do not enable Anomaly-only SSS, DLSS or PiP features.</text></string>
+    <string id="ui_mcm_ixray_restart"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_live"><text>Applied by the console; saved in user.ltx.</text></string>
+    <string id="ui_mcm_ixray_r_aa"><text>Anti-aliasing</text></string>
+    <string id="ui_mcm_ixray_r2_ssao_mode"><text>Ambient occlusion</text></string>
+    <string id="ui_mcm_ixray_r2_sun_shafts"><text>Sun shafts</text></string>
+    <string id="ui_mcm_ixray_r2_sun_quality"><text>Sun shadow quality</text></string>
+    <string id="ui_mcm_ixray_r2_smap_size"><text>Shadow map resolution</text></string>
+    <string id="ui_mcm_ixray_r2_cloud_shadows"><text>Cloud shadows</text></string>
+    <string id="ui_mcm_ixray_r2_sun_details"><text>Sun shadows from grass</text></string>
+    <string id="ui_mcm_ixray_r2_lights_details"><text>Grass shadows from lamps</text></string>
+    <string id="ui_mcm_ixray_r4_hud_shadows"><text>Screen-space weapon shadows</text></string>
+    <string id="ui_mcm_ixray_r4_hashed_alpha_test"><text>Hashed alpha test</text></string>
+    <string id="ui_mcm_ixray_r4_sslr_water"><text>Water reflections</text></string>
+    <string id="ui_mcm_ixray_r4_sslr_reflections"><text>World reflections</text></string>
+    <string id="ui_mcm_ixray_r4_enable_vslr"><text>Volumetric local lighting</text></string>
+    <string id="ui_mcm_ixray_r4_vslr_distance"><text>Volumetric lighting distance factor</text></string>
+    <string id="ui_mcm_ixray_r4_cas_sharpening"><text>CAS sharpening</text></string>
+    <string id="ui_mcm_ixray_r4_puddles"><text>Puddles</text></string>
+    <string id="ui_mcm_ixray_r4_enable_tessellation"><text>Tessellation</text></string>
+    <string id="ui_mcm_ixray_r2_steep_parallax"><text>Steep parallax</text></string>
+    <string id="ui_mcm_ixray_r2_detail_bump"><text>Detail bump mapping</text></string>
+    <string id="ui_mcm_ixray_r__detail_radius"><text>Grass draw radius</text></string>
+    <string id="ui_mcm_ixray_r__detail_density"><text>Grass spacing (lower = denser)</text></string>
+    <string id="ui_mcm_ixray_rs_fps_limit"><text>FPS limit (0 = unlimited)</text></string>
+    <string id="ui_mcm_ixray_g_ironsights_zoom_factor"><text>Anomaly iron-sight magnification</text></string>
+    <string id="ui_mcm_ixray_r_aa_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r2_ssao_mode_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r2_sun_shafts_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r2_sun_quality_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r2_smap_size_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r2_cloud_shadows_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r2_sun_details_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r2_lights_details_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r4_hud_shadows_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r4_hashed_alpha_test_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r4_sslr_water_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r4_sslr_reflections_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r4_enable_vslr_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r4_vslr_distance_desc"><text>Applied by the console; saved in user.ltx.</text></string>
+    <string id="ui_mcm_ixray_r4_cas_sharpening_desc"><text>Applied by the console; saved in user.ltx.</text></string>
+    <string id="ui_mcm_ixray_r4_puddles_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r4_enable_tessellation_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r2_steep_parallax_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r2_detail_bump_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r__detail_radius_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_r__detail_density_desc"><text>Restart the game after applying this option.</text></string>
+    <string id="ui_mcm_ixray_rs_fps_limit_desc"><text>Applied by the console; saved in user.ltx.</text></string>
+    <string id="ui_mcm_ixray_g_ironsights_zoom_factor_desc"><text>Applied by the console; saved in user.ltx.</text></string>
+  <string id="ui_mm_ssao"><text>SSAO</text></string>
+  <string id="ui_mm_gtao"><text>GTAO</text></string>
+</string_table>

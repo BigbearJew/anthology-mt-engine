@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+    <string id="ui_mcm_ixray_title"><text>IX-Ray: штатные настройки</text></string>
+    <string id="ui_mcm_ixray_description"><text>Настройки нативного рендера IX-Ray DX11. Текущие значения, варианты и диапазоны берутся из движка; изменения сохраняются в user.ltx. Для отмеченных параметров нужен перезапуск игры. Этот раздел не включает функции SSS, DLSS и PiP из Anomaly.</text></string>
+    <string id="ui_mcm_ixray_restart"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_live"><text>Применяется через консоль и сохраняется в user.ltx.</text></string>
+    <string id="ui_mcm_ixray_r_aa"><text>Сглаживание</text></string>
+    <string id="ui_mcm_ixray_r2_ssao_mode"><text>Затенение окружения</text></string>
+    <string id="ui_mcm_ixray_r2_sun_shafts"><text>Солнечные лучи</text></string>
+    <string id="ui_mcm_ixray_r2_sun_quality"><text>Качество солнечных теней</text></string>
+    <string id="ui_mcm_ixray_r2_smap_size"><text>Разрешение карты теней</text></string>
+    <string id="ui_mcm_ixray_r2_cloud_shadows"><text>Тени облаков</text></string>
+    <string id="ui_mcm_ixray_r2_sun_details"><text>Тени травы от солнца</text></string>
+    <string id="ui_mcm_ixray_r2_lights_details"><text>Тени травы от фонарей</text></string>
+    <string id="ui_mcm_ixray_r4_hud_shadows"><text>Экранные тени оружия</text></string>
+    <string id="ui_mcm_ixray_r4_hashed_alpha_test"><text>Стохастический тест прозрачности</text></string>
+    <string id="ui_mcm_ixray_r4_sslr_water"><text>Отражения на воде</text></string>
+    <string id="ui_mcm_ixray_r4_sslr_reflections"><text>Отражения на поверхностях</text></string>
+    <string id="ui_mcm_ixray_r4_enable_vslr"><text>Объёмное освещение от ламп</text></string>
+    <string id="ui_mcm_ixray_r4_vslr_distance"><text>Коэффициент дальности объёмного света</text></string>
+    <string id="ui_mcm_ixray_r4_cas_sharpening"><text>Резкость CAS</text></string>
+    <string id="ui_mcm_ixray_r4_puddles"><text>Лужи</text></string>
+    <string id="ui_mcm_ixray_r4_enable_tessellation"><text>Тесселяция</text></string>
+    <string id="ui_mcm_ixray_r2_steep_parallax"><text>Рельеф поверхностей (Steep Parallax)</text></string>
+    <string id="ui_mcm_ixray_r2_detail_bump"><text>Микрорельеф текстур</text></string>
+    <string id="ui_mcm_ixray_r__detail_radius"><text>Радиус отрисовки травы</text></string>
+    <string id="ui_mcm_ixray_r__detail_density"><text>Шаг размещения травы (меньше = гуще)</text></string>
+    <string id="ui_mcm_ixray_rs_fps_limit"><text>Ограничение FPS (0 = без ограничения)</text></string>
+    <string id="ui_mcm_ixray_g_ironsights_zoom_factor"><text>Увеличение открытого прицела Anomaly</text></string>
+    <string id="ui_mcm_ixray_r_aa_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r2_ssao_mode_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r2_sun_shafts_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r2_sun_quality_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r2_smap_size_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r2_cloud_shadows_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r2_sun_details_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r2_lights_details_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r4_hud_shadows_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r4_hashed_alpha_test_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r4_sslr_water_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r4_sslr_reflections_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r4_enable_vslr_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r4_vslr_distance_desc"><text>Применяется через консоль и сохраняется в user.ltx.</text></string>
+    <string id="ui_mcm_ixray_r4_cas_sharpening_desc"><text>Применяется через консоль и сохраняется в user.ltx.</text></string>
+    <string id="ui_mcm_ixray_r4_puddles_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r4_enable_tessellation_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r2_steep_parallax_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r2_detail_bump_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r__detail_radius_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_r__detail_density_desc"><text>После применения этого параметра перезапустите игру.</text></string>
+    <string id="ui_mcm_ixray_rs_fps_limit_desc"><text>Применяется через консоль и сохраняется в user.ltx.</text></string>
+    <string id="ui_mcm_ixray_g_ironsights_zoom_factor_desc"><text>Применяется через консоль и сохраняется в user.ltx.</text></string>
+  <string id="ui_mm_ssao"><text>SSAO</text></string>
+  <string id="ui_mm_gtao"><text>GTAO</text></string>
+</string_table>

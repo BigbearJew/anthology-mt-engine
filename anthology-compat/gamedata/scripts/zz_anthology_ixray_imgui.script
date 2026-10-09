@@ -1,0 +1,11 @@
+-- IX-Ray creates the ImGui frame in its renderer, after level updates.
+function on_game_start()
+    if not has_ixray_dxml_callback or not ImGui or not ImGui.Groups then
+        return
+    end
+    local unique = ImGui.Groups.Unique
+    if unique and unique.Render and type(RemoveUniqueCall) == "function" then
+        RemoveUniqueCall(unique.Render)
+    end
+    ImGui.ixray_groups_ready = true
+end

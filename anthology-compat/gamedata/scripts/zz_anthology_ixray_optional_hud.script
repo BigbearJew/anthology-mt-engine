@@ -1,0 +1,120 @@
+-- The GFY bridge needs the same unported HUD attachment/material API as WD.
+local bridge = zzzz_wd_gfy_exo_screen
+if type(bridge) == "table" and type(bridge.on_game_start) == "function" then
+    local original_start = bridge.on_game_start
+    bridge.on_game_start = function(...)
+        if not (game_object and game_object.get_shaders and game_object.add_attachment) then
+            printf("[IX-Ray compatibility] GFY exo screen needs the unported HUD attachment/material API")
+            return
+        end
+        return original_start(...)
+    end
+end
+
+-- Keep the native stamina calculation until the Anomaly equipment formula is ported.
+local difficulty = game_difficulties
+if type(difficulty) == "table" and type(difficulty.set_actor_stamina) == "function" then
+    local original_stamina = difficulty.set_actor_stamina
+    local warned = false
+    difficulty.set_actor_stamina = function(...)
+        local value = get_console():get_string("power_loss_bias")
+        if not value or value == "" then
+            if not warned then
+                printf("[IX-Ray compatibility] Anomaly power_loss_bias unavailable; native stamina remains active")
+                warned = true
+            end
+            return
+        end
+        return original_stamina(...)
+    end
+end
+
+local freelook = wd_hands_freelook
+if type(freelook) == "table" and type(freelook.register) == "function" then
+    local original_register = freelook.register
+    freelook.register = function(...)
+        if not (key_bindings and key_bindings.kFREELOOK) then
+            printf("[IX-Ray compatibility] WD freelook hand adjustment unavailable: first-person freelook is not ported")
+            return
+        end
+        return original_register(...)
+    end
+end
+
+-- Keep native IX-Ray wet surfaces; do not submit absent SSS commands each frame.
+local wetness = ssfx_wetness
+if type(wetness) == "table" and type(wetness.on_game_start) == "function" then
+    local original_start = wetness.on_game_start
+    wetness.on_game_start = function(...)
+        local command = get_console():get_string("ssfx_gloss_factor")
+        if not command or command == "" then
+            printf("[IX-Ray compatibility] SSS automatic gloss unavailable: ssfx_gloss_factor renderer command is not ported")
+            return
+        end
+        return original_start(...)
+    end
+end
+
+local drops = ssfx_rain_hud_raindrops
+if type(drops) == "table" and type(drops.on_game_start) == "function" then
+    local original_start = drops.on_game_start
+    drops.on_game_start = function(...)
+        local command = get_console():get_string("ssfx_hud_drops_1")
+        if not level.rain_hemi or not command or command == "" then
+            printf("[IX-Ray compatibility] SSS HUD raindrops unavailable: rain_hemi and SSS renderer commands are not ported")
+            return
+        end
+        return original_start(...)
+    end
+end
+
+-- SAR requires Monolith EFX overrides; native IX-Ray environmental audio stays active.
+local function has_command(name)
+    local value = get_console():get_string(name)
+    return value ~= nil and value ~= ""
+end
+local function gate_sar_start(module, label)
+    if type(module) ~= "table" or type(module.on_game_start) ~= "function" then return end
+    local original_start = module.on_game_start
+    module.on_game_start = function(...)
+        if not has_command("snd_efx_reverb_overwrite") then
+            printf("[IX-Ray compatibility] %s unavailable: Monolith EFX overrides are not ported", label)
+            return
+        end
+        return original_start(...)
+    end
+end
+gate_sar_start(sar_main, "Spatial Audio Rework reverb")
+gate_sar_start(sar_snd_replacer, "Spatial Audio Rework sound replacement")
+if type(sar_main) == "table" and type(sar_main.loadReverb) == "function" then
+    local original_load = sar_main.loadReverb
+    sar_main.loadReverb = function(...)
+        if not has_command("snd_efx_reverb_overwrite") then return false end
+        return original_load(...)
+    end
+end
+
+-- Filter the shared descriptor table once; retain all supported weather adjustments.
+local weather = dynamic_weather_sat_lum_amb_hemi_amount_time
+if type(weather) == "table" and type(weather.on_game_start) == "function" then
+    local original_start = weather.on_game_start
+    weather.on_game_start = function(...)
+        local params
+        for index = 1, 64 do
+            local name, value = debug.getupvalue(weather.actor_on_update, index)
+            if not name then break end
+            if name == "PARAMS" and type(value) == "table" then params = value; break end
+        end
+        if not params then
+            printf("[IX-Ray compatibility] Weather adjustment unavailable: parameter table changed")
+            return
+        end
+        for index = #params, 1, -1 do
+            if not has_command(params[index].cmd) then
+                printf("[IX-Ray compatibility] Weather parameter unavailable: %s", params[index].cmd)
+                table.remove(params, index)
+            end
+        end
+        return original_start(...)
+    end
+end

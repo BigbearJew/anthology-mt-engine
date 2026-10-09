@@ -1,0 +1,24 @@
+function init()
+    if type(add_scope_radii) ~= "function" then
+        if type(has_ixray_dxml_callback) == "function" then
+            printf("[IX-Ray compatibility] Monolith FakeLens renderer is unavailable; native weapon optics remain active")
+            return
+        end
+        error("add_scope_radii function doesn't exist for this engine, reinstall modded exes")
+    end
+    exec_console_cmd("r__fakescope " .. 1)
+    if scopeRadii and scopeRadii.scopeRadii then
+        for key, val in pairs(scopeRadii.scopeRadii) do
+            add_scope_radii(key, val)
+        end
+    end
+end
+
+-- Dummy func for heatvision compatibility
+function updateScope()
+    --
+end
+
+function on_game_start()
+	RegisterScriptCallback( "actor_on_first_update", init )
+end

@@ -1,0 +1,21 @@
+-- The experimental IX-Ray port has DXML/unlocalizers, but no Modded Exes date.
+function on_game_start()
+    if type(has_ixray_dxml_callback) ~= "function" or not has_ixray_dxml_callback() then
+        return
+    end
+    local core = western_goods_core
+    if type(core) ~= "table" or type(core.is_modded_exes_updated) ~= "function" then
+        return
+    end
+    local original = core.is_modded_exes_updated
+    core.is_modded_exes_updated = function()
+        if original() then
+            return true
+        end
+        -- Keep the addon's real prerequisite checks; do not invent an engine version.
+        return has_ixray_dxml_callback()
+            and core.is_dxml_installed()
+            and core.is_lua_unlocalizer_installed()
+    end
+    printf("[IX-Ray/WG] Experimental port: checking native DXML and Lua unlocalizers instead of the Modded Exes release date")
+end
