@@ -302,6 +302,11 @@ void CUIWindow::DetachChild(CUIWindow* pChild)
 	if (m_pMouseCapturer == pChild)
 		SetCapture(pChild, false);
 
+	// SQA fix: a detached (reparented or deleted) child must not stay this
+	// window's keyboard capturer, or the next key press calls a dead window.
+	if (m_pKeyboardCapturer == pChild)
+		m_pKeyboardCapturer = NULL;
+
 	{
 		xrCriticalSectionGuard guard(csUi);
 
